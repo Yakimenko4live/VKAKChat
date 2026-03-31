@@ -1,0 +1,14 @@
+[server]
+host = "127.0.0.1"
+port = 3000
+
+[database]
+url = "postgresql://postgres:password@localhost:5432/vkak_chat"
+max_connections = 5
+
+[jwt]
+secret = "your-secret-key-change-in-production"
+expiration_hours = 24
+
+[logging]
+level = "info"

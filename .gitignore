@@ -1,0 +1,37 @@
+# Rust
+/target/
+/server/target/
+**/*.rs.bk
+*.pdb
+*.dll
+*.exe
+*.so
+*.dylib
+
+# Flutter
+/client/build/
+/client/.dart_tool/
+/client/.flutter-plugins
+/client/.flutter-plugins-dependencies
+/client/.packages
+/client/pubspec.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+*.env.local
+
+
+# Added by cargo
+
+/target
