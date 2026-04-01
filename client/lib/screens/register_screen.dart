@@ -4,7 +4,9 @@ import '../models/user.dart';
 import '../models/department.dart';
 
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+  final VoidCallback onToggle;
+
+  const RegisterScreen({super.key, required this.onToggle});
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -13,32 +15,32 @@ class RegisterScreen extends StatefulWidget {
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _apiService = ApiService();
-  
+
   final _surnameController = TextEditingController();
   final _nameController = TextEditingController();
   final _patronymicController = TextEditingController();
   final _commentController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  
+
   Department? _selectedDepartment;
   List<Department> _departments = [];
   List<Department> _level1Departments = [];
   List<Department> _level2Departments = [];
   List<Department> _level3Departments = [];
-  
+
   Department? _selectedLevel1;
   Department? _selectedLevel2;
-  
+
   bool _isLoading = false;
   bool _isLoadingDepartments = true;
-  
+
   @override
   void initState() {
     super.initState();
     _loadDepartments();
   }
-  
+
   Future<void> _loadDepartments() async {
     try {
       final departments = await _apiService.getDepartments();
@@ -51,78 +53,81 @@ class _RegisterScreenState extends State<RegisterScreen> {
       setState(() {
         _isLoadingDepartments = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка загрузки отделов: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Ошибка загрузки отделов: $e')));
     }
   }
-  
+
   void _onLevel1Selected(Department? dept) {
     setState(() {
       _selectedLevel1 = dept;
       _selectedLevel2 = null;
       _selectedDepartment = dept;
-      _level2Departments = _departments.where((d) => 
-        d.level == 2 && d.parentId == dept?.id
-      ).toList();
+      _level2Departments = _departments
+          .where((d) => d.level == 2 && d.parentId == dept?.id)
+          .toList();
       _level3Departments = [];
     });
   }
-  
+
   void _onLevel2Selected(Department? dept) {
     setState(() {
       _selectedLevel2 = dept;
       _selectedDepartment = dept;
-      _level3Departments = _departments.where((d) => 
-        d.level == 3 && d.parentId == dept?.id
-      ).toList();
+      _level3Departments = _departments
+          .where((d) => d.level == 3 && d.parentId == dept?.id)
+          .toList();
     });
   }
-  
+
   void _onLevel3Selected(Department? dept) {
     setState(() {
       _selectedDepartment = dept;
     });
   }
-  
+
   String _truncateName(String name, int maxLength) {
     if (name.length <= maxLength) return name;
     return '${name.substring(0, maxLength - 3)}...';
   }
-  
+
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedDepartment == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Выберите отдел')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Выберите отдел')));
       return;
     }
-    
+
     setState(() => _isLoading = true);
-    
+
     try {
       final user = User(
         surname: _surnameController.text.trim(),
         name: _nameController.text.trim(),
-        patronymic: _patronymicController.text.trim().isEmpty 
-            ? null 
+        patronymic: _patronymicController.text.trim().isEmpty
+            ? null
             : _patronymicController.text.trim(),
         departmentId: _selectedDepartment!.id,
-        comment: _commentController.text.trim().isEmpty 
-            ? null 
+        comment: _commentController.text.trim().isEmpty
+            ? null
             : _commentController.text.trim(),
       );
-      
+
       await _apiService.register(user, _passwordController.text);
-      
+
       if (mounted) {
         showDialog(
           context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
             backgroundColor: Colors.grey[800],
-            title: const Text('Регистрация отправлена', style: TextStyle(color: Colors.white)),
+            title: const Text(
+              'Регистрация отправлена',
+              style: TextStyle(color: Colors.white),
+            ),
             content: const Text(
               'Ваша заявка отправлена администратору. После подтверждения вы сможете войти в приложение.',
               style: TextStyle(color: Colors.white70),
@@ -131,7 +136,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               TextButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  Navigator.pop(context);
+                  widget.onToggle();
                 },
                 child: const Text('OK', style: TextStyle(color: Colors.green)),
               ),
@@ -140,27 +145,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Material(
+          color: Colors.transparent,
           child: _isLoadingDepartments
               ? const Center(
                   child: CircularProgressIndicator(color: Colors.green),
                 )
               : Container(
-                  width: MediaQuery.of(context).size.width > 600 ? 500 : double.infinity,
+                  width: MediaQuery.of(context).size.width > 600
+                      ? 500
+                      : double.infinity,
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     color: Colors.grey[900]?.withOpacity(0.85),
@@ -207,10 +214,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         const SizedBox(height: 8),
                         const Text(
                           'Заполните данные для регистрации',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.white54,
-                          ),
+                          style: TextStyle(fontSize: 14, color: Colors.white54),
                         ),
                         const SizedBox(height: 24),
                         TextFormField(
@@ -234,7 +238,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               borderSide: const BorderSide(color: Colors.green),
                             ),
                           ),
-                          validator: (v) => v?.isEmpty ?? true ? 'Введите фамилию' : null,
+                          validator: (v) =>
+                              v?.isEmpty ?? true ? 'Введите фамилию' : null,
                         ),
                         const SizedBox(height: 16),
                         TextFormField(
@@ -258,7 +263,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               borderSide: const BorderSide(color: Colors.green),
                             ),
                           ),
-                          validator: (v) => v?.isEmpty ?? true ? 'Введите имя' : null,
+                          validator: (v) =>
+                              v?.isEmpty ?? true ? 'Введите имя' : null,
                         ),
                         const SizedBox(height: 16),
                         TextFormField(
@@ -284,7 +290,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        // Окружной отдел
                         DropdownButtonFormField<Department>(
                           value: _selectedLevel1,
                           dropdownColor: Colors.grey[800],
@@ -314,10 +319,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             );
                           }).toList(),
                           onChanged: _onLevel1Selected,
-                          validator: (v) => v == null ? 'Выберите окружной отдел' : null,
+                          validator: (v) =>
+                              v == null ? 'Выберите окружной отдел' : null,
                         ),
-                        
-                        // Субъектовый отдел (если есть)
+
                         if (_level2Departments.isNotEmpty) ...[
                           const SizedBox(height: 16),
                           DropdownButtonFormField<Department>(
@@ -326,7 +331,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             style: const TextStyle(color: Colors.white),
                             decoration: InputDecoration(
                               labelText: 'Субъектовый отдел',
-                              labelStyle: const TextStyle(color: Colors.white54),
+                              labelStyle: const TextStyle(
+                                color: Colors.white54,
+                              ),
                               filled: true,
                               fillColor: Colors.white.withOpacity(0.1),
                               border: OutlineInputBorder(
@@ -339,7 +346,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(16),
-                                borderSide: const BorderSide(color: Colors.green),
+                                borderSide: const BorderSide(
+                                  color: Colors.green,
+                                ),
                               ),
                             ),
                             items: _level2Departments.map((dept) {
@@ -351,19 +360,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             onChanged: _onLevel2Selected,
                           ),
                         ],
-                        
-                        // Местный отдел (если есть)
+
                         if (_level3Departments.isNotEmpty) ...[
                           const SizedBox(height: 16),
                           DropdownButtonFormField<Department>(
-                            value: _selectedDepartment != null && _selectedDepartment!.level == 3 
-                                ? _selectedDepartment 
+                            value:
+                                _selectedDepartment != null &&
+                                    _selectedDepartment!.level == 3
+                                ? _selectedDepartment
                                 : null,
                             dropdownColor: Colors.grey[800],
                             style: const TextStyle(color: Colors.white),
                             decoration: InputDecoration(
                               labelText: 'Местный отдел',
-                              labelStyle: const TextStyle(color: Colors.white54),
+                              labelStyle: const TextStyle(
+                                color: Colors.white54,
+                              ),
                               filled: true,
                               fillColor: Colors.white.withOpacity(0.1),
                               border: OutlineInputBorder(
@@ -376,7 +388,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(16),
-                                borderSide: const BorderSide(color: Colors.green),
+                                borderSide: const BorderSide(
+                                  color: Colors.green,
+                                ),
                               ),
                             ),
                             items: _level3Departments.map((dept) {
@@ -388,7 +402,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             onChanged: _onLevel3Selected,
                           ),
                         ],
-                        
+
                         const SizedBox(height: 16),
                         TextFormField(
                           controller: _commentController,
@@ -440,7 +454,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                           validator: (v) {
                             if (v?.isEmpty ?? true) return 'Введите пароль';
-                            if (v!.length < 6) return 'Пароль не менее 6 символов';
+                            if (v!.length < 6)
+                              return 'Пароль не менее 6 символов';
                             return null;
                           },
                         ),
@@ -504,6 +519,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                     ),
                                   ),
                           ),
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text(
+                              'Уже есть аккаунт?',
+                              style: TextStyle(color: Colors.white54),
+                            ),
+                            TextButton(
+                              onPressed: widget.onToggle,
+                              child: const Text(
+                                'Войти',
+                                style: TextStyle(color: Colors.green),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
