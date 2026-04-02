@@ -4,6 +4,8 @@ import '../services/api_service.dart';
 import '../models/auth.dart';
 import 'main_screen.dart';
 import '../services/auth_service.dart';
+import 'package:provider/provider.dart';
+
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onToggle;
@@ -36,6 +38,10 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       print('Login success: ${response.userId}');
+
+      // Аутентифицируем WebSocket
+      final wsService = Provider.of<WebSocketService>(context, listen: false);
+      wsService.authenticate(response.userId);
 
       final authService = AuthService();
       await authService.saveSession(response.token, response.userId);

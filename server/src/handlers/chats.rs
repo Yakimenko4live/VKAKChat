@@ -1,0 +1,265 @@
+use axum::{
+    extract::{State, Path, Extension},
+    http::StatusCode,
+    Json,
+};
+use serde::{Deserialize, Serialize};
+use sqlx::{PgPool, Row};
+use uuid::Uuid;
+
+#[derive(Debug, Serialize)]
+pub struct ChatResponse {
+    pub id: Uuid,
+    pub title: Option<String>,
+    pub chat_type: String,
+    pub other_user_id: Option<Uuid>,
+    pub other_user_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateChatRequest {
+    pub other_user_id: Uuid,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MessageResponse {
+    pub id: Uuid,
+    pub chat_id: Uuid,
+    pub sender_id: Uuid,
+    pub content: String,
+    pub is_read: bool,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SendMessageRequest {
+    pub chat_id: Uuid,
+    pub content: String,
+}
+
+pub async fn get_or_create_chat(
+    State(pool): State<PgPool>,
+    Extension(user_id): Extension<Uuid>,
+    Json(body): Json<CreateChatRequest>,
+) -> Result<Json<ChatResponse>, (StatusCode, String)> {
+    
+    // Проверяем, существует ли уже чат между пользователями
+    let existing_chat = sqlx::query(
+        r#"
+        SELECT c.id, c.title, c.type 
+        FROM chats c
+        JOIN chat_participants cp1 ON c.id = cp1.chat_id
+        JOIN chat_participants cp2 ON c.id = cp2.chat_id
+        WHERE c.type = 'private' 
+          AND cp1.user_id = $1 
+          AND cp2.user_id = $2
+        "#
+    )
+    .bind(user_id)
+    .bind(body.other_user_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+    
+    if let Some(chat) = existing_chat {
+        let chat_id: Uuid = chat.get("id");
+        let title: Option<String> = chat.get("title");
+        let chat_type: String = chat.get("type");
+        
+        let other_user = sqlx::query(
+            "SELECT surname, name FROM users WHERE id = $1"
+        )
+        .bind(body.other_user_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+        
+        let other_name = format!(
+            "{} {}",
+            other_user.get::<String, _>("surname"),
+            other_user.get::<String, _>("name")
+        );
+        
+        return Ok(Json(ChatResponse {
+            id: chat_id,
+            title,
+            chat_type,
+            other_user_id: Some(body.other_user_id),
+            other_user_name: Some(other_name),
+        }));
+    }
+    
+    // Создаём новый чат
+    let chat_id = Uuid::new_v4();
+    sqlx::query(
+        r#"
+        INSERT INTO chats (id, type)
+        VALUES ($1, 'private')
+        "#
+    )
+    .bind(chat_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+    
+    // Добавляем участников
+    sqlx::query(
+        "INSERT INTO chat_participants (chat_id, user_id) VALUES ($1, $2)"
+    )
+    .bind(chat_id)
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+    
+    sqlx::query(
+        "INSERT INTO chat_participants (chat_id, user_id) VALUES ($1, $2)"
+    )
+    .bind(chat_id)
+    .bind(body.other_user_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+    
+    let other_user = sqlx::query(
+        "SELECT surname, name FROM users WHERE id = $1"
+    )
+    .bind(body.other_user_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+    
+    let other_name = format!(
+        "{} {}",
+        other_user.get::<String, _>("surname"),
+        other_user.get::<String, _>("name")
+    );
+    
+    Ok(Json(ChatResponse {
+        id: chat_id,
+        title: None,
+        chat_type: "private".to_string(),
+        other_user_id: Some(body.other_user_id),
+        other_user_name: Some(other_name),
+    }))
+}
+
+pub async fn get_user_chats(
+    State(pool): State<PgPool>,
+    Extension(user_id): Extension<Uuid>,
+) -> Result<Json<Vec<ChatResponse>>, (StatusCode, String)> {
+    
+    let chats = sqlx::query(
+        r#"
+        SELECT c.id, c.title, c.type,
+               CASE 
+                   WHEN c.type = 'private' THEN (
+                       SELECT u.surname || ' ' || u.name
+                       FROM users u
+                       JOIN chat_participants cp ON u.id = cp.user_id
+                       WHERE cp.chat_id = c.id AND cp.user_id != $1
+                       LIMIT 1
+                   )
+                   ELSE c.title
+               END as other_name,
+               (SELECT u2.id FROM users u2
+                JOIN chat_participants cp2 ON u2.id = cp2.user_id
+                WHERE cp2.chat_id = c.id AND cp2.user_id != $1
+                LIMIT 1) as other_user_id
+        FROM chats c
+        JOIN chat_participants cp ON c.id = cp.chat_id
+        WHERE cp.user_id = $1
+        ORDER BY c.updated_at DESC
+        "#
+    )
+    .bind(user_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+    
+    let result = chats.iter().map(|row| {
+        ChatResponse {
+            id: row.get("id"),
+            title: row.get("title"),
+            chat_type: row.get("type"),
+            other_user_id: row.get("other_user_id"),
+            other_user_name: row.get("other_name"),
+        }
+    }).collect();
+    
+    Ok(Json(result))
+}
+
+pub async fn get_chat_messages(
+    State(pool): State<PgPool>,
+    Path(chat_id): Path<Uuid>,
+) -> Result<Json<Vec<MessageResponse>>, (StatusCode, String)> {
+    
+    let messages = sqlx::query(
+        r#"
+        SELECT id, chat_id, sender_id, content, is_read, created_at
+        FROM messages
+        WHERE chat_id = $1
+        ORDER BY created_at ASC
+        LIMIT 100
+        "#
+    )
+    .bind(chat_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+    
+    let result = messages.iter().map(|row| {
+        MessageResponse {
+            id: row.get("id"),
+            chat_id: row.get("chat_id"),
+            sender_id: row.get("sender_id"),
+            content: row.get("content"),
+            is_read: row.get("is_read"),
+            created_at: row.get("created_at"),
+        }
+    }).collect();
+    
+    Ok(Json(result))
+}
+
+pub async fn send_message(
+    State(pool): State<PgPool>,
+    Extension(user_id): Extension<Uuid>,
+    Json(body): Json<SendMessageRequest>,
+) -> Result<Json<MessageResponse>, (StatusCode, String)> {
+    
+    let message_id = Uuid::new_v4();
+    
+    sqlx::query(
+        r#"
+        INSERT INTO messages (id, chat_id, sender_id, content)
+        VALUES ($1, $2, $3, $4)
+        "#
+    )
+    .bind(message_id)
+    .bind(body.chat_id)
+    .bind(user_id)
+    .bind(&body.content)
+    .execute(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+    
+    // Обновляем время чата
+    sqlx::query(
+        "UPDATE chats SET updated_at = NOW() WHERE id = $1"
+    )
+    .bind(body.chat_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+    
+    Ok(Json(MessageResponse {
+        id: message_id,
+        chat_id: body.chat_id,
+        sender_id: user_id,
+        content: body.content,
+        is_read: false,
+        created_at: chrono::Utc::now(),
+    }))
+}

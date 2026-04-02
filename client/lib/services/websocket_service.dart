@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:web_socket_channel/io.dart';
+import 'dart:convert';
+import '../models/chat.dart';
+import 'dart:convert';
 
 enum ConnectionQuality {
   excellent,
@@ -24,6 +26,9 @@ class WebSocketService extends ChangeNotifier {
   int _reconnectAttempts = 0;
   static const int _maxReconnectAttempts = 10;
   
+  // Callback для новых сообщений
+  Function(MessageResponse)? onNewMessage;
+  
   ConnectionQuality get quality => _quality;
   Duration get latency => _currentLatency;
   
@@ -34,6 +39,17 @@ class WebSocketService extends ChangeNotifier {
     _doConnect();
   }
   
+  void authenticate(String userId) {
+  if (_channel != null) {
+    final authMsg = json.encode({
+      'type': 'auth',
+      'user_id': userId,
+    });
+    _channel!.sink.add(authMsg);
+    print('WebSocket authenticated for user: $userId');
+  }
+}
+
   void _doConnect() {
     try {
       _channel?.sink.close();
@@ -44,7 +60,6 @@ class WebSocketService extends ChangeNotifier {
       _subscription = _channel!.stream.listen(
         (message) {
           _handleMessage(message);
-          // При получении любого сообщения — соединение живо
           if (_quality == ConnectionQuality.disconnected) {
             _updateQuality(ConnectionQuality.excellent);
             _reconnectAttempts = 0;
@@ -72,37 +87,47 @@ class WebSocketService extends ChangeNotifier {
     }
   }
   
-  void _handleDisconnect() {
-    _stopPing();
-    _updateQuality(ConnectionQuality.disconnected);
-    _startReconnect();
-  }
-  
-  void _startReconnect() {
-    if (_isReconnecting) return;
-    if (_reconnectAttempts >= _maxReconnectAttempts) {
-      print('Max reconnect attempts reached, stopping');
-      return;
-    }
-    
-    _isReconnecting = true;
-    _reconnectAttempts++;
-    
-    final delay = Duration(seconds: _reconnectAttempts * 2);
-    print('Reconnecting in ${delay.inSeconds} seconds (attempt $_reconnectAttempts/$_maxReconnectAttempts)');
-    
-    _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(delay, () {
-      _isReconnecting = false;
-      _doConnect();
+void authenticate(String userId) {
+  if (_channel != null) {
+    final authMsg = json.encode({
+      'type': 'auth',
+      'user_id': userId,
     });
+    _channel!.sink.add(authMsg);
   }
-  
+}
+
   void _handleMessage(dynamic message) {
     if (message == 'pong' && _lastPingSent != null) {
       _currentLatency = DateTime.now().difference(_lastPingSent!);
       _updateQualityByLatency(_currentLatency);
       notifyListeners();
+      return;
+    }
+    
+    // Пытаемся распарсить как JSON (сообщение)
+    try {
+      final data = json.decode(message);
+      if (data['type'] == 'new_message') {
+        final msg = MessageResponse.fromJson(data['data']);
+        onNewMessage?.call(msg);
+      }
+    } catch (e) {
+      // Не JSON, игнорируем
+    }
+  }
+  
+  void sendMessage(String chatId, String content, String senderId) {
+    if (_channel != null) {
+      final message = json.encode({
+        'type': 'message',
+        'data': {
+          'chat_id': chatId,
+          'content': content,
+          'sender_id': senderId,
+        }
+      });
+      _channel!.sink.add(message);
     }
   }
   
@@ -141,10 +166,30 @@ class WebSocketService extends ChangeNotifier {
     _pingTimer = null;
   }
   
-  void send(String message) {
-    if (_channel != null) {
-      _channel!.sink.add(message);
+  void _handleDisconnect() {
+    _stopPing();
+    _updateQuality(ConnectionQuality.disconnected);
+    _startReconnect();
+  }
+  
+  void _startReconnect() {
+    if (_isReconnecting) return;
+    if (_reconnectAttempts >= _maxReconnectAttempts) {
+      print('Max reconnect attempts reached, stopping');
+      return;
     }
+    
+    _isReconnecting = true;
+    _reconnectAttempts++;
+    
+    final delay = Duration(seconds: _reconnectAttempts * 2);
+    print('Reconnecting in ${delay.inSeconds} seconds (attempt $_reconnectAttempts/$_maxReconnectAttempts)');
+    
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(delay, () {
+      _isReconnecting = false;
+      _doConnect();
+    });
   }
   
   void disconnect() {

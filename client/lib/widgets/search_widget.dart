@@ -3,6 +3,10 @@ import '../services/api_service.dart';
 import '../models/user.dart';
 import '../models/department.dart';
 import 'department_tree_widget.dart';
+import 'package:provider/provider.dart';
+import '../services/auth_service.dart';
+import '../models/chat.dart';
+import '../screens/chat_screen.dart';
 
 class SearchWidget extends StatefulWidget {
   const SearchWidget({super.key});
@@ -81,10 +85,29 @@ class _SearchWidgetState extends State<SearchWidget> {
     }
   }
 
-  void _startChat(String userId) {
-    print('Start chat with: $userId');
-    // TODO: начать чат с пользователем
+ void _startChat(String userId) async {
+  try {
+    final apiService = ApiService();
+    final chat = await apiService.createChat(userId);
+    
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ChatScreen(
+            chatId: chat.id,
+            otherUserName: chat.otherUserName ?? 'Чат',
+            otherUserId: userId,
+          ),
+        ),
+      );
+    }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Ошибка создания чата: $e')),
+    );
   }
+}
 
   @override
   void dispose() {
