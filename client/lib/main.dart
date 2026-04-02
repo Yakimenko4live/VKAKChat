@@ -22,24 +22,31 @@ class MyApp extends StatelessWidget {
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
           useMaterial3: true,
+          // Убедимся, что Scaffold по умолчанию прозрачный во всем приложении
+          scaffoldBackgroundColor: Colors.transparent,
         ),
-        home: Stack(
-          children: [
-            const AnimatedBackground(
-              numberOfPoints: 35,
-              connectionDistance: 180,
-            ),
-            const AuthScreen(),
-            Positioned(
-              top: 16,
-              right: 16,
-              child: Consumer<WebSocketService>(
-                builder: (context, service, _) =>
-                    ConnectionIndicator(webSocketService: service),
+        // Используем builder, чтобы фон был статичным при переходах между экранами
+        builder: (context, child) {
+          return Stack(
+            children: [
+              const AnimatedBackground(
+                numberOfPoints: 35,
+                connectionDistance: 180,
               ),
-            ),
-          ],
-        ),
+              if (child != null) child,
+              Positioned(
+                top: 16,
+                right: 16,
+                child: Consumer<WebSocketService>(
+                  builder: (context, service, _) => ConnectionIndicator(
+                    webSocketService: service,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+        home: const AuthScreen(),
       ),
     );
   }

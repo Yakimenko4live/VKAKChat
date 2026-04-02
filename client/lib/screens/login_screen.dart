@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
-import '../services/websocket_service.dart';
 import '../models/auth.dart';
+import 'main_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onToggle;
@@ -36,13 +36,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
       print('Login success: ${response.userId}');
 
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('userId', response.userId);
+      await prefs.setString('token', response.token);
+
       if (mounted) {
-        ScaffoldMessenger.of(
+        // Используем pushReplacement с MaterialPageRoute для простоты
+        Navigator.pushReplacement(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Вход выполнен успешно')));
-        // TODO: перейти на главный экран чатов
+          MaterialPageRoute(builder: (context) => const MainScreen()),
+        );
       }
     } catch (e) {
+      print('Login error: $e');
       if (mounted) {
         ScaffoldMessenger.of(
           context,
