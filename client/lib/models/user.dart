@@ -40,3 +40,35 @@ class User {
     );
   }
 }
+
+class UserSearchResult {
+  final String id;
+  final String surname;
+  final String name;
+  final String? patronymic;
+  final String departmentId;
+  final String departmentName;
+  final String? comment;
+
+  UserSearchResult({
+    required this.id,
+    required this.surname,
+    required this.name,
+    this.patronymic,
+    required this.departmentId,
+    required this.departmentName,
+    this.comment,
+  });
+
+  factory UserSearchResult.fromJson(Map<String, dynamic> json) {
+    return UserSearchResult(
+      id: json['id'].toString(),
+      surname: json['surname'],
+      name: json['name'],
+      patronymic: json['patronymic'],
+      departmentId: json['department_id'].toString(),
+      departmentName: json['department_name'],
+      comment: json['comment'],
+    );
+  }
+}

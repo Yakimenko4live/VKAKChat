@@ -20,6 +20,43 @@ class ApiService {
     }
   }
 
+Future<UserData> getMe(String token) async {
+  final response = await http.get(
+    Uri.parse('$baseUrl/api/me'),
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Authorization': 'Bearer $token',
+    },
+  );
+
+  if (response.statusCode == 200) {
+    final decodedBody = utf8.decode(response.bodyBytes);
+    final data = json.decode(decodedBody);
+    return UserData.fromJson(data);
+  } else if (response.statusCode == 401) {
+    throw Exception('Сессия истекла');
+  } else {
+    throw Exception('Ошибка загрузки данных пользователя');
+  }
+}
+
+Future<List<UserSearchResult>> searchUsers(String query) async {
+  final response = await http.get(
+    Uri.parse('$baseUrl/api/users/search?q=${Uri.encodeQueryComponent(query)}'),
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+  );
+
+  if (response.statusCode == 200) {
+    final decodedBody = utf8.decode(response.bodyBytes);
+    final List<dynamic> data = json.decode(decodedBody);
+    return data.map((json) => UserSearchResult.fromJson(json)).toList();
+  } else {
+    throw Exception('Failed to search users');
+  }
+}
+
   Future<void> register(User user, String password) async {
     final response = await http.post(
       Uri.parse('$baseUrl/api/register'),

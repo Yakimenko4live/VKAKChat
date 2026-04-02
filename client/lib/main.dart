@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import 'animated_background.dart';
 import 'services/websocket_service.dart';
 import 'widgets/connection_indicator.dart';
-import 'screens/auth_screen.dart';
+import 'screens/splash_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -22,10 +22,8 @@ class MyApp extends StatelessWidget {
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
           useMaterial3: true,
-          // Убедимся, что Scaffold по умолчанию прозрачный во всем приложении
           scaffoldBackgroundColor: Colors.transparent,
         ),
-        // Используем builder, чтобы фон был статичным при переходах между экранами
         builder: (context, child) {
           return Stack(
             children: [
@@ -46,7 +44,7 @@ class MyApp extends StatelessWidget {
             ],
           );
         },
-        home: const AuthScreen(),
+        home: const SplashScreen(),
       ),
     );
   }

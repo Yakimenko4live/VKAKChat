@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../models/auth.dart';
 import 'main_screen.dart';
+import '../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onToggle;
@@ -36,9 +37,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
       print('Login success: ${response.userId}');
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('userId', response.userId);
-      await prefs.setString('token', response.token);
+      final authService = AuthService();
+      await authService.saveSession(response.token, response.userId);
+
+      // final prefs = await SharedPreferences.getInstance();
+      // await prefs.setString('userId', response.userId);
+      // await prefs.setString('token', response.token);
 
       if (mounted) {
         // Используем pushReplacement с MaterialPageRoute для простоты

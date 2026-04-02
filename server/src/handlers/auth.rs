@@ -1,17 +1,34 @@
 use axum::{
     extract::State,
-    http::StatusCode,
+    http::{Request, StatusCode},
     Json,
 };
+use jsonwebtoken::{decode, DecodingKey, Validation, encode, Header, EncodingKey};
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 use argon2::{
     password_hash::{PasswordHash, PasswordVerifier, rand_core::OsRng, PasswordHasher, SaltString},
     Argon2,
 };
-use serde::{Deserialize, Serialize};
-use jsonwebtoken::{encode, Header, EncodingKey};
 use tracing::info;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Claims {
+    pub sub: String,
+    pub exp: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MeResponse {
+    pub user_id: Uuid,
+    pub surname: String,
+    pub name: String,
+    pub patronymic: Option<String>,
+    pub department_name: Option<String>,
+    pub comment: Option<String>,
+    pub is_approved: bool,
+}
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterRequest {
@@ -41,6 +58,64 @@ pub struct LoginResponse {
     pub user_id: Uuid,
     pub surname: String,
     pub name: String,
+}
+
+pub async fn me(
+    State(pool): State<PgPool>,
+    req: Request<axum::body::Body>,
+) -> Result<Json<MeResponse>, (StatusCode, String)> {
+    
+    // Извлекаем токен из заголовка Authorization
+    let auth_header = req.headers()
+        .get("authorization")
+        .and_then(|h| h.to_str().ok())
+        .ok_or((StatusCode::UNAUTHORIZED, "Требуется авторизация".to_string()))?;
+    
+    if !auth_header.starts_with("Bearer ") {
+        return Err((StatusCode::UNAUTHORIZED, "Неверный формат токена".to_string()));
+    }
+    
+    let token = &auth_header[7..];
+    
+    let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "secret".to_string());
+    
+    let claims = decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(jwt_secret.as_bytes()),
+        &Validation::default(),
+    )
+    .map_err(|_| (StatusCode::UNAUTHORIZED, "Неверный токен".to_string()))?;
+    
+    let user_id = Uuid::parse_str(&claims.claims.sub)
+        .map_err(|_| (StatusCode::UNAUTHORIZED, "Неверный ID пользователя".to_string()))?;
+    
+    let user = sqlx::query!(
+        r#"
+        SELECT u.id, u.surname, u.name, u.patronymic, u.comment, u.is_approved, d.name as department_name
+        FROM users u
+        LEFT JOIN departments d ON u.department_id = d.id
+        WHERE u.id = $1
+        "#,
+        user_id
+    )
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+    
+    let user = match user {
+        Some(u) => u,
+        None => return Err((StatusCode::NOT_FOUND, "Пользователь не найден".to_string())),
+    };
+    
+    Ok(Json(MeResponse {
+        user_id: user.id,
+        surname: user.surname,
+        name: user.name,
+        patronymic: user.patronymic,
+        department_name: Some(user.department_name),
+        comment: user.comment,
+        is_approved: user.is_approved.unwrap_or(false),
+    }))
 }
 
 pub async fn register(
@@ -153,7 +228,7 @@ pub async fn login(
     let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "secret".to_string());
     let token = match encode(
         &Header::default(),
-        &serde_json::json!({ "sub": user.id.to_string() }),
+        &Claims { sub: user.id.to_string(), exp: 9999999999 },
         &EncodingKey::from_secret(jwt_secret.as_bytes()),
     ) {
         Ok(t) => t,

@@ -16,3 +16,14 @@ pub struct RegisterResponse {
     pub message: String,
     pub user_id: Uuid,
 }
+
+#[derive(Debug, Serialize)]
+pub struct LoginResponse {
+    pub token: String,
+    pub user_id: Uuid,
+    pub surname: String,
+    pub name: String,
+    pub patronymic: Option<String>,
+    pub department_name: Option<String>,
+    pub is_approved: bool,
+}
