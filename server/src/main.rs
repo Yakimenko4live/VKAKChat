@@ -71,19 +71,19 @@ async fn main() -> anyhow::Result<()> {
         .allow_methods(Any)
         .allow_headers(Any);
     
-    let app = Router::new()
-        .route("/health", get(handlers::health::health_check))
-        .route("/ws", get(handlers::websocket::websocket_handler))
-        .route("/api/departments", get(handlers::departments::get_departments))
-        .route("/api/register", axum::routing::post(handlers::auth::register))
-        .route("/api/login", axum::routing::post(handlers::auth::login))
-        .route("/api/me", axum::routing::get(handlers::auth::me))
-        .route("/api/users/search", get(handlers::users::search_users))
-        // .route("/api/departments/tree", get(handlers::users::get_department_tree))
-        .layer(ServiceBuilder::new().layer(axum::middleware::from_fn(utf8_middleware)))
-        .layer(cors)
-        .layer(TraceLayer::new_for_http())
-        .with_state(pool);
+let app = Router::new()
+    .route("/health", get(handlers::health::health_check))
+    .route("/ws", get(handlers::websocket::websocket_handler))
+    .route("/api/departments", get(handlers::departments::get_departments))
+    .route("/api/register", axum::routing::post(handlers::auth::register))
+    .route("/api/login", axum::routing::post(handlers::auth::login))
+    .route("/api/me", axum::routing::get(handlers::auth::me))
+    .route("/api/users/search", get(handlers::users::search_users))
+    .route("/api/departments/tree", get(handlers::departments::get_department_tree))
+    .layer(ServiceBuilder::new().layer(axum::middleware::from_fn(utf8_middleware)))
+    .layer(cors)
+    .layer(TraceLayer::new_for_http())
+    .with_state(pool);
     
     let addr: SocketAddr = "0.0.0.0:3000".parse()?;
     println!("🚀 Server running on http://{}", addr);

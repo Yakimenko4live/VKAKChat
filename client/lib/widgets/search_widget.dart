@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
+import '../models/department.dart';
+import 'department_tree_widget.dart';
 
 class SearchWidget extends StatefulWidget {
   const SearchWidget({super.key});
@@ -14,23 +16,45 @@ class _SearchWidgetState extends State<SearchWidget> {
   final ApiService _apiService = ApiService();
   
   List<UserSearchResult> _searchResults = [];
+  List<DepartmentNode> _departmentTree = [];
   bool _isLoading = false;
   bool _showResults = false;
+  bool _showDepartments = true;
+  bool _isLoadingDepartments = true;
 
   @override
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
+    _loadDepartments();
+  }
+
+  Future<void> _loadDepartments() async {
+    setState(() => _isLoadingDepartments = true);
+    try {
+      final tree = await _apiService.getDepartmentTree();
+      setState(() {
+        _departmentTree = tree;
+        _isLoadingDepartments = false;
+      });
+    } catch (e) {
+      setState(() => _isLoadingDepartments = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка загрузки отделов: $e')),
+      );
+    }
   }
 
   void _onSearchChanged() {
     final query = _searchController.text;
     if (query.length >= 2) {
+      setState(() => _showDepartments = false);
       _performSearch();
     } else if (query.isEmpty) {
       setState(() {
         _searchResults = [];
         _showResults = false;
+        _showDepartments = true;
       });
     }
   }
@@ -55,6 +79,11 @@ class _SearchWidgetState extends State<SearchWidget> {
         SnackBar(content: Text('Ошибка поиска: $e')),
       );
     }
+  }
+
+  void _startChat(String userId) {
+    print('Start chat with: $userId');
+    // TODO: начать чат с пользователем
   }
 
   @override
@@ -95,6 +124,7 @@ class _SearchWidgetState extends State<SearchWidget> {
                         setState(() {
                           _searchResults = [];
                           _showResults = false;
+                          _showDepartments = true;
                         });
                       },
                     )
@@ -127,77 +157,95 @@ class _SearchWidgetState extends State<SearchWidget> {
                             itemCount: _searchResults.length,
                             itemBuilder: (context, index) {
                               final user = _searchResults[index];
-                              return _buildUserTile(user);
+                              return _buildUserTile(
+                                id: user.id,
+                                surname: user.surname,
+                                name: user.name,
+                                patronymic: user.patronymic,
+                                departmentName: user.departmentName,
+                                comment: user.comment,
+                              );
                             },
                           )
-                : const Center(
-                    child: Text(
-                      'Введите имя или фамилию для поиска',
-                      style: TextStyle(color: Colors.white54),
-                    ),
-                  ),
+                : _isLoadingDepartments
+                    ? const Center(child: CircularProgressIndicator(color: Colors.green))
+                    : DepartmentTreeWidget(
+                        departments: _departmentTree,
+                        onUserTap: _startChat,
+                      ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildUserTile(UserSearchResult user) {
+  Widget _buildUserTile({
+    required String id,
+    required String surname,
+    required String name,
+    String? patronymic,
+    required String departmentName,
+    String? comment,
+  }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.1),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(12),
-        leading: Container(
-          width: 50,
-          height: 50,
-          decoration: BoxDecoration(
-            color: Colors.green.withOpacity(0.3),
-            borderRadius: BorderRadius.circular(25),
-          ),
-          child: const Center(
-            child: Icon(Icons.person, color: Colors.white),
-          ),
-        ),
-        title: Text(
-          '${user.surname} ${user.name}${user.patronymic != null ? ' ${user.patronymic}' : ''}',
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            Text(
-              user.departmentName,
-              style: const TextStyle(color: Colors.white54, fontSize: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+              color: Colors.green.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(25),
             ),
-            if (user.comment != null && user.comment!.isNotEmpty)
-              Text(
-                user.comment!,
-                style: const TextStyle(color: Colors.white38, fontSize: 11),
+            child: const Center(
+              child: Icon(Icons.person, color: Colors.white, size: 24),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  patronymic != null && patronymic.isNotEmpty
+                      ? '$surname $name $patronymic'
+                      : '$surname $name',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  departmentName,
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+                if (comment != null && comment.isNotEmpty)
+                  Text(
+                    comment,
+                    style: const TextStyle(color: Colors.white38, fontSize: 11),
+                  ),
+              ],
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => _startChat(id),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
-          ],
-        ),
-        trailing: ElevatedButton(
-          onPressed: () {
-            print('Start chat with: ${user.id}');
-            // TODO: начать чат с пользователем
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
             ),
+            child: const Text('Написать'),
           ),
-          child: const Text('Написать'),
-        ),
+        ],
       ),
     );
   }

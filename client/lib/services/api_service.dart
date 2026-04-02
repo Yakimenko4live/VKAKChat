@@ -40,6 +40,34 @@ Future<UserData> getMe(String token) async {
   }
 }
 
+Future<List<DepartmentWithUsers>> getAllDepartmentsWithUsers() async {
+  final response = await http.get(
+    Uri.parse('$baseUrl/api/departments/all'),
+  );
+
+  if (response.statusCode == 200) {
+    final decodedBody = utf8.decode(response.bodyBytes);
+    final List<dynamic> data = json.decode(decodedBody);
+    return data.map((json) => DepartmentWithUsers.fromJson(json)).toList();
+  } else {
+    throw Exception('Failed to load departments with users');
+  }
+}
+
+
+Future<List<DepartmentNode>> getDepartmentTree() async {
+  final response = await http.get(
+    Uri.parse('$baseUrl/api/departments/tree'),
+  );
+
+  if (response.statusCode == 200) {
+    final decodedBody = utf8.decode(response.bodyBytes);
+    final List<dynamic> data = json.decode(decodedBody);
+    return data.map((json) => DepartmentNode.fromJson(json)).toList();
+  } else {
+    throw Exception('Failed to load department tree');
+  }
+}
 Future<List<UserSearchResult>> searchUsers(String query) async {
   final response = await http.get(
     Uri.parse('$baseUrl/api/users/search?q=${Uri.encodeQueryComponent(query)}'),
