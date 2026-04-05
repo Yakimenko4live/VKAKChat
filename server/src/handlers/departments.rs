@@ -4,9 +4,19 @@ use axum::{
     Json,
 };
 use serde::Serialize;
-use sqlx::{PgPool, Row};
+use sqlx::Row;
 use uuid::Uuid;
 use std::collections::HashMap;
+
+use crate::state::AppState;
+
+#[derive(Debug, Serialize)]
+pub struct Department {
+    pub id: Uuid,
+    pub name: String,
+    pub level: i32,
+    pub parent_id: Option<Uuid>,
+}
 
 #[derive(Debug, Serialize, Clone)]
 pub struct UserInfo {
@@ -26,22 +36,14 @@ pub struct DepartmentNode {
     pub children: Vec<DepartmentNode>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct Department {
-    pub id: Uuid,
-    pub name: String,
-    pub level: i32,
-    pub parent_id: Option<Uuid>,
-}
-
 pub async fn get_departments(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
 ) -> Result<Json<Vec<Department>>, (StatusCode, String)> {
     
     let rows = sqlx::query(
         "SELECT id, name, level, parent_id FROM departments ORDER BY level, name"
     )
-    .fetch_all(&pool)
+    .fetch_all(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     
@@ -76,10 +78,9 @@ fn build_children(
 }
 
 pub async fn get_department_tree(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
 ) -> Result<Json<Vec<DepartmentNode>>, (StatusCode, String)> {
     
-    // Получаем все отделы
     let dept_rows = sqlx::query(
         r#"
         SELECT id, name, level, parent_id
@@ -87,11 +88,10 @@ pub async fn get_department_tree(
         ORDER BY level, name
         "#
     )
-    .fetch_all(&pool)
+    .fetch_all(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     
-    // Получаем всех утверждённых пользователей
     let user_rows = sqlx::query(
         r#"
         SELECT u.id, u.surname, u.name, u.patronymic, u.comment, u.department_id
@@ -100,11 +100,10 @@ pub async fn get_department_tree(
         ORDER BY u.surname, u.name
         "#
     )
-    .fetch_all(&pool)
+    .fetch_all(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     
-    // Группируем пользователей по отделам
     let mut dept_users: HashMap<Uuid, Vec<UserInfo>> = HashMap::new();
     for row in &user_rows {
         let dept_id: Uuid = row.get("department_id");
@@ -118,7 +117,6 @@ pub async fn get_department_tree(
         dept_users.entry(dept_id).or_insert_with(Vec::new).push(user_info);
     }
     
-    // Создаём карту отделов
     let mut dept_map: HashMap<Uuid, DepartmentNode> = HashMap::new();
     for row in &dept_rows {
         let id: Uuid = row.get("id");
@@ -132,7 +130,6 @@ pub async fn get_department_tree(
         dept_map.insert(id, node);
     }
     
-    // Строим карту детей
     let mut children_map: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
     for row in &dept_rows {
         let id: Uuid = row.get("id");
@@ -142,7 +139,6 @@ pub async fn get_department_tree(
         }
     }
     
-    // Строим корневые узлы
     let mut roots = Vec::new();
     for row in &dept_rows {
         let id: Uuid = row.get("id");

@@ -2,7 +2,6 @@ use axum::{
     http::{Request, StatusCode},
     middleware::Next,
     response::Response,
-    response::IntoResponse,
 };
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
@@ -42,10 +41,7 @@ pub async fn auth_middleware(
     let user_id = Uuid::parse_str(&claims.claims.sub)
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
     
-    // Добавляем user_id в расширения запроса для использования в обработчиках
     req.extensions_mut().insert(user_id);
     
-    let response = next.run(req).await;
-    
-    Ok(response)
+    Ok(next.run(req).await)
 }

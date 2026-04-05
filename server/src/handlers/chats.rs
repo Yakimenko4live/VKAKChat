@@ -4,8 +4,10 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::{PgPool, Row};
+use sqlx::Row;
 use uuid::Uuid;
+
+use crate::state::AppState;
 
 #[derive(Debug, Serialize)]
 pub struct ChatResponse {
@@ -38,12 +40,11 @@ pub struct SendMessageRequest {
 }
 
 pub async fn get_or_create_chat(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Extension(user_id): Extension<Uuid>,
     Json(body): Json<CreateChatRequest>,
 ) -> Result<Json<ChatResponse>, (StatusCode, String)> {
     
-    // Проверяем, существует ли уже чат между пользователями
     let existing_chat = sqlx::query(
         r#"
         SELECT c.id, c.title, c.type 
@@ -57,7 +58,7 @@ pub async fn get_or_create_chat(
     )
     .bind(user_id)
     .bind(body.other_user_id)
-    .fetch_optional(&pool)
+    .fetch_optional(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     
@@ -70,7 +71,7 @@ pub async fn get_or_create_chat(
             "SELECT surname, name FROM users WHERE id = $1"
         )
         .bind(body.other_user_id)
-        .fetch_one(&pool)
+        .fetch_one(&state.pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
         
@@ -89,7 +90,6 @@ pub async fn get_or_create_chat(
         }));
     }
     
-    // Создаём новый чат
     let chat_id = Uuid::new_v4();
     sqlx::query(
         r#"
@@ -98,17 +98,16 @@ pub async fn get_or_create_chat(
         "#
     )
     .bind(chat_id)
-    .execute(&pool)
+    .execute(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     
-    // Добавляем участников
     sqlx::query(
         "INSERT INTO chat_participants (chat_id, user_id) VALUES ($1, $2)"
     )
     .bind(chat_id)
     .bind(user_id)
-    .execute(&pool)
+    .execute(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     
@@ -117,7 +116,7 @@ pub async fn get_or_create_chat(
     )
     .bind(chat_id)
     .bind(body.other_user_id)
-    .execute(&pool)
+    .execute(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     
@@ -125,7 +124,7 @@ pub async fn get_or_create_chat(
         "SELECT surname, name FROM users WHERE id = $1"
     )
     .bind(body.other_user_id)
-    .fetch_one(&pool)
+    .fetch_one(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     
@@ -145,7 +144,7 @@ pub async fn get_or_create_chat(
 }
 
 pub async fn get_user_chats(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Extension(user_id): Extension<Uuid>,
 ) -> Result<Json<Vec<ChatResponse>>, (StatusCode, String)> {
     
@@ -173,7 +172,7 @@ pub async fn get_user_chats(
         "#
     )
     .bind(user_id)
-    .fetch_all(&pool)
+    .fetch_all(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     
@@ -191,7 +190,7 @@ pub async fn get_user_chats(
 }
 
 pub async fn get_chat_messages(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path(chat_id): Path<Uuid>,
 ) -> Result<Json<Vec<MessageResponse>>, (StatusCode, String)> {
     
@@ -205,7 +204,7 @@ pub async fn get_chat_messages(
         "#
     )
     .bind(chat_id)
-    .fetch_all(&pool)
+    .fetch_all(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     
@@ -224,7 +223,7 @@ pub async fn get_chat_messages(
 }
 
 pub async fn send_message(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Extension(user_id): Extension<Uuid>,
     Json(body): Json<SendMessageRequest>,
 ) -> Result<Json<MessageResponse>, (StatusCode, String)> {
@@ -241,16 +240,15 @@ pub async fn send_message(
     .bind(body.chat_id)
     .bind(user_id)
     .bind(&body.content)
-    .execute(&pool)
+    .execute(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     
-    // Обновляем время чата
     sqlx::query(
         "UPDATE chats SET updated_at = NOW() WHERE id = $1"
     )
     .bind(body.chat_id)
-    .execute(&pool)
+    .execute(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     

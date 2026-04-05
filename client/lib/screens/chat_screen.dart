@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../services/websocket_service.dart';
 import '../models/chat.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:provider/provider.dart';
-import '../services/websocket_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -36,13 +34,23 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _loadCurrentUser();
     _loadMessages();
-    
+
     _webSocketService = Provider.of<WebSocketService>(context, listen: false);
     _webSocketService.onNewMessage = _onNewMessage;
   }
 
+  @override
+  void dispose() {
+    // Очищаем подписку, чтобы не было утечек памяти при закрытии чата
+    _webSocketService.onNewMessage = null;
+    _messageController.dispose();
+    super.dispose();
+  }
+
   void _onNewMessage(MessageResponse message) {
+    print('📨 onNewMessage called: ${message.content}');
     if (message.chatId == widget.chatId && mounted) {
+      print('✅ Adding message to chat');
       setState(() {
         _messages.add(message);
       });
@@ -65,9 +73,11 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     } catch (e) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка загрузки сообщений: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка загрузки сообщений: $e')),
+        );
+      }
     }
   }
 
@@ -76,22 +86,15 @@ class _ChatScreenState extends State<ChatScreen> {
     if (text.isEmpty) return;
 
     _messageController.clear();
-    
-    // Отправляем через WebSocket
+
+    print(
+      '📤 Sending message via WebSocket: chatId=${widget.chatId}, text=$text, userId=$_currentUserId',
+    );
+
     if (_currentUserId != null) {
       _webSocketService.sendMessage(widget.chatId, text, _currentUserId!);
     } else {
-      // Fallback на HTTP
-      try {
-        final message = await _apiService.sendMessage(widget.chatId, text);
-        setState(() {
-          _messages.add(message);
-        });
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка отправки: $e')),
-        );
-      }
+      print('❌ Cannot send: userId is null');
     }
   }
 
@@ -115,24 +118,27 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: Colors.green))
+                ? const Center(
+                    child: CircularProgressIndicator(color: Colors.green),
+                  )
                 : _messages.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'Нет сообщений. Напишите что-нибудь...',
-                          style: TextStyle(color: Colors.white54),
-                        ),
-                      )
-                    : ListView.builder(
-                        reverse: true,
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _messages.length,
-                        itemBuilder: (context, index) {
-                          final message = _messages.reversed.toList()[index];
-                          final isMe = message.senderId == _currentUserId;
-                          return _buildMessageBubble(message, isMe);
-                        },
-                      ),
+                ? const Center(
+                    child: Text(
+                      'Нет сообщений. Напишите что-нибудь...',
+                      style: TextStyle(color: Colors.white54),
+                    ),
+                  )
+                : ListView.builder(
+                    reverse: true,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) {
+                      // Оптимизировано: берем элемент с конца массива без создания нового списка
+                      final message = _messages[_messages.length - 1 - index];
+                      final isMe = message.senderId == _currentUserId;
+                      return _buildMessageBubble(message, isMe);
+                    },
+                  ),
           ),
           Container(
             margin: const EdgeInsets.all(16),
@@ -146,11 +152,11 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: TextField(
                     controller: _messageController,
                     style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                       hintText: 'Сообщение...',
-                      hintStyle: const TextStyle(color: Colors.white38),
+                      hintStyle: TextStyle(color: Colors.white38),
                       border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16),
                     ),
                   ),
                 ),

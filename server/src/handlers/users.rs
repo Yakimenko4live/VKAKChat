@@ -4,8 +4,10 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::{PgPool, Row};
+use sqlx::Row;
 use uuid::Uuid;
+
+use crate::state::AppState;
 
 #[derive(Debug, Serialize)]
 pub struct UserSearchResult {
@@ -24,7 +26,7 @@ pub struct SearchQuery {
 }
 
 pub async fn search_users(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<UserSearchResult>>, (StatusCode, String)> {
     
@@ -42,7 +44,7 @@ pub async fn search_users(
             LIMIT 50
             "#
         )
-        .fetch_all(&pool)
+        .fetch_all(&state.pool)
         .await
     } else {
         let search_pattern = format!("%{}%", search_term);
@@ -62,7 +64,7 @@ pub async fn search_users(
             "#
         )
         .bind(search_pattern)
-        .fetch_all(&pool)
+        .fetch_all(&state.pool)
         .await
     };
     

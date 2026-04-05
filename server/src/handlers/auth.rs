@@ -5,13 +5,14 @@ use axum::{
 };
 use jsonwebtoken::{decode, DecodingKey, Validation, encode, Header, EncodingKey};
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
 use uuid::Uuid;
 use argon2::{
     password_hash::{PasswordHash, PasswordVerifier, rand_core::OsRng, PasswordHasher, SaltString},
     Argon2,
 };
 use tracing::info;
+
+use crate::state::AppState;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
@@ -61,11 +62,10 @@ pub struct LoginResponse {
 }
 
 pub async fn me(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     req: Request<axum::body::Body>,
 ) -> Result<Json<MeResponse>, (StatusCode, String)> {
     
-    // Извлекаем токен из заголовка Authorization
     let auth_header = req.headers()
         .get("authorization")
         .and_then(|h| h.to_str().ok())
@@ -98,7 +98,7 @@ pub async fn me(
         "#,
         user_id
     )
-    .fetch_optional(&pool)
+    .fetch_optional(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     
@@ -119,7 +119,7 @@ pub async fn me(
 }
 
 pub async fn register(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Json(req): Json<RegisterRequest>,
 ) -> Result<(StatusCode, Json<RegisterResponse>), (StatusCode, String)> {
     
@@ -127,7 +127,7 @@ pub async fn register(
         "SELECT EXISTS(SELECT 1 FROM departments WHERE id = $1)"
     )
     .bind(req.department_id)
-    .fetch_one(&pool)
+    .fetch_one(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     
@@ -157,7 +157,7 @@ pub async fn register(
     .bind(req.department_id)
     .bind(&req.comment)
     .bind(&password_hash)
-    .execute(&pool)
+    .execute(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Insert error: {}", e)))?;
     
@@ -171,7 +171,7 @@ pub async fn register(
 }
 
 pub async fn login(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, (StatusCode, String)> {
     
@@ -185,7 +185,7 @@ pub async fn login(
         "#,
         req.identifier
     )
-    .fetch_optional(&pool)
+    .fetch_optional(&state.pool)
     .await
     .map_err(|e| {
         info!("Database error: {}", e);

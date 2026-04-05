@@ -5,7 +5,7 @@ import '../models/auth.dart';
 import 'main_screen.dart';
 import '../services/auth_service.dart';
 import 'package:provider/provider.dart';
-
+import '../services/websocket_service.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onToggle;

@@ -3,14 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
 import '../models/chat.dart';
-import 'dart:convert';
 
-enum ConnectionQuality {
-  excellent,
-  good,
-  poor,
-  disconnected,
-}
+enum ConnectionQuality { excellent, good, poor, disconnected }
 
 class WebSocketService extends ChangeNotifier {
   WebSocketChannel? _channel;
@@ -20,46 +14,44 @@ class WebSocketService extends ChangeNotifier {
   ConnectionQuality _quality = ConnectionQuality.disconnected;
   DateTime? _lastPingSent;
   StreamSubscription? _subscription;
-  
+
   String? _currentUrl;
   bool _isReconnecting = false;
   int _reconnectAttempts = 0;
   static const int _maxReconnectAttempts = 10;
-  
+
   // Callback для новых сообщений
   Function(MessageResponse)? onNewMessage;
-  
+
   ConnectionQuality get quality => _quality;
   Duration get latency => _currentLatency;
-  
+
   void connect(String url) {
     _currentUrl = url;
     _isReconnecting = false;
     _reconnectAttempts = 0;
     _doConnect();
   }
-  
+
   void authenticate(String userId) {
-  if (_channel != null) {
-    final authMsg = json.encode({
-      'type': 'auth',
-      'user_id': userId,
-    });
-    _channel!.sink.add(authMsg);
-    print('WebSocket authenticated for user: $userId');
+    if (_channel != null) {
+      final authMsg = json.encode({'type': 'auth', 'user_id': userId});
+      _channel!.sink.add(authMsg);
+      print('WebSocket authenticated for user: $userId');
+    }
   }
-}
 
   void _doConnect() {
     try {
       _channel?.sink.close();
       _subscription?.cancel();
-      
+
       _channel = WebSocketChannel.connect(Uri.parse(_currentUrl!));
-      
+
       _subscription = _channel!.stream.listen(
         (message) {
           _handleMessage(message);
+          print('📨 WebSocket received raw: $message');
           if (_quality == ConnectionQuality.disconnected) {
             _updateQuality(ConnectionQuality.excellent);
             _reconnectAttempts = 0;
@@ -74,28 +66,17 @@ class WebSocketService extends ChangeNotifier {
           _handleDisconnect();
         },
       );
-      
+
       print('WebSocket connected');
       _startPing();
       _updateQuality(ConnectionQuality.excellent);
       _reconnectAttempts = 0;
       _isReconnecting = false;
-      
     } catch (e) {
       print('WebSocket connection failed: $e');
       _handleDisconnect();
     }
   }
-  
-void authenticate(String userId) {
-  if (_channel != null) {
-    final authMsg = json.encode({
-      'type': 'auth',
-      'user_id': userId,
-    });
-    _channel!.sink.add(authMsg);
-  }
-}
 
   void _handleMessage(dynamic message) {
     if (message == 'pong' && _lastPingSent != null) {
@@ -104,7 +85,7 @@ void authenticate(String userId) {
       notifyListeners();
       return;
     }
-    
+
     // Пытаемся распарсить как JSON (сообщение)
     try {
       final data = json.decode(message);
@@ -113,37 +94,40 @@ void authenticate(String userId) {
         onNewMessage?.call(msg);
       }
     } catch (e) {
-      // Не JSON, игнорируем
+      // Логируем ошибку парсинга, чтобы не терять сообщения молча
+      print('❌ Ошибка парсинга сообщения WebSocket: $e');
     }
   }
-  
+
   void sendMessage(String chatId, String content, String senderId) {
+    print(
+      '📤 WebSocket.sendMessage called: chatId=$chatId, content=$content, senderId=$senderId',
+    );
     if (_channel != null) {
       final message = json.encode({
         'type': 'message',
-        'data': {
-          'chat_id': chatId,
-          'content': content,
-          'sender_id': senderId,
-        }
+        'data': {'chat_id': chatId, 'content': content, 'sender_id': senderId},
       });
+      print('📤 Sending WebSocket message: $message');
       _channel!.sink.add(message);
+    } else {
+      print('❌ WebSocket channel is null!');
     }
   }
-  
+
   void _startPing() {
     _pingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       _sendPing();
     });
   }
-  
+
   void _sendPing() {
     if (_channel != null) {
       _lastPingSent = DateTime.now();
       _channel!.sink.add('ping');
     }
   }
-  
+
   void _updateQualityByLatency(Duration latency) {
     if (latency.inMilliseconds < 100) {
       _updateQuality(ConnectionQuality.excellent);
@@ -153,45 +137,47 @@ void authenticate(String userId) {
       _updateQuality(ConnectionQuality.poor);
     }
   }
-  
+
   void _updateQuality(ConnectionQuality newQuality) {
     if (_quality != newQuality) {
       _quality = newQuality;
       notifyListeners();
     }
   }
-  
+
   void _stopPing() {
     _pingTimer?.cancel();
     _pingTimer = null;
   }
-  
+
   void _handleDisconnect() {
     _stopPing();
     _updateQuality(ConnectionQuality.disconnected);
     _startReconnect();
   }
-  
+
   void _startReconnect() {
     if (_isReconnecting) return;
     if (_reconnectAttempts >= _maxReconnectAttempts) {
       print('Max reconnect attempts reached, stopping');
       return;
     }
-    
+
     _isReconnecting = true;
     _reconnectAttempts++;
-    
+
     final delay = Duration(seconds: _reconnectAttempts * 2);
-    print('Reconnecting in ${delay.inSeconds} seconds (attempt $_reconnectAttempts/$_maxReconnectAttempts)');
-    
+    print(
+      'Reconnecting in ${delay.inSeconds} seconds (attempt $_reconnectAttempts/$_maxReconnectAttempts)',
+    );
+
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(delay, () {
       _isReconnecting = false;
       _doConnect();
     });
   }
-  
+
   void disconnect() {
     _stopPing();
     _reconnectTimer?.cancel();
@@ -199,7 +185,7 @@ void authenticate(String userId) {
     _channel?.sink.close();
     _channel = null;
   }
-  
+
   @override
   void dispose() {
     disconnect();
