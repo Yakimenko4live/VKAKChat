@@ -7,7 +7,8 @@ class User {
   final String? departmentName;
   final String? comment;
   final bool isApproved;
-  
+  final String? publicKey;
+
   User({
     this.id,
     required this.surname,
@@ -17,16 +18,18 @@ class User {
     this.departmentName,
     this.comment,
     this.isApproved = false,
+    this.publicKey,
   });
-  
+
   Map<String, dynamic> toJson() => {
     'surname': surname,
     'name': name,
     'patronymic': patronymic,
     'department_id': departmentId,
     'comment': comment,
+    'public_key': publicKey,
   };
-  
+
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
       id: json['id']?.toString(),
@@ -37,6 +40,7 @@ class User {
       departmentName: json['department_name'],
       comment: json['comment'],
       isApproved: json['is_approved'] ?? false,
+      publicKey: json['public_key'],
     );
   }
 }
@@ -49,6 +53,7 @@ class UserSearchResult {
   final String departmentId;
   final String departmentName;
   final String? comment;
+  final String? publicKey;
 
   UserSearchResult({
     required this.id,
@@ -58,6 +63,7 @@ class UserSearchResult {
     required this.departmentId,
     required this.departmentName,
     this.comment,
+    this.publicKey,
   });
 
   factory UserSearchResult.fromJson(Map<String, dynamic> json) {
@@ -69,6 +75,7 @@ class UserSearchResult {
       departmentId: json['department_id'].toString(),
       departmentName: json['department_name'],
       comment: json['comment'],
+      publicKey: json['public_key'],
     );
   }
 }

@@ -29,6 +29,7 @@ pub struct MeResponse {
     pub department_name: Option<String>,
     pub comment: Option<String>,
     pub is_approved: bool,
+    pub public_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -39,6 +40,7 @@ pub struct RegisterRequest {
     pub department_id: Uuid,
     pub comment: Option<String>,
     pub password: String,
+    pub public_key: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -59,6 +61,7 @@ pub struct LoginResponse {
     pub user_id: Uuid,
     pub surname: String,
     pub name: String,
+    pub public_key: Option<String>,
 }
 
 pub async fn me(
@@ -91,7 +94,7 @@ pub async fn me(
     
     let user = sqlx::query!(
         r#"
-        SELECT u.id, u.surname, u.name, u.patronymic, u.comment, u.is_approved, d.name as department_name
+        SELECT u.id, u.surname, u.name, u.patronymic, u.comment, u.is_approved, u.public_key, d.name as department_name
         FROM users u
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE u.id = $1
@@ -115,6 +118,7 @@ pub async fn me(
         department_name: Some(user.department_name),
         comment: user.comment,
         is_approved: user.is_approved.unwrap_or(false),
+        public_key: user.public_key,
     }))
 }
 
@@ -146,8 +150,8 @@ pub async fn register(
     
     sqlx::query(
         r#"
-        INSERT INTO users (id, surname, name, patronymic, department_id, comment, password_hash, is_approved)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, false)
+        INSERT INTO users (id, surname, name, patronymic, department_id, comment, password_hash, is_approved, public_key)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, false, $8)
         "#
     )
     .bind(user_id)
@@ -157,6 +161,7 @@ pub async fn register(
     .bind(req.department_id)
     .bind(&req.comment)
     .bind(&password_hash)
+    .bind(&req.public_key)
     .execute(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Insert error: {}", e)))?;
@@ -179,7 +184,7 @@ pub async fn login(
     
     let user = sqlx::query!(
         r#"
-        SELECT id, surname, name, password_hash, is_approved
+        SELECT id, surname, name, password_hash, is_approved, public_key
         FROM users
         WHERE surname || ' ' || name = $1 OR surname = $1 OR name = $1
         "#,
@@ -243,5 +248,6 @@ pub async fn login(
         user_id: user.id,
         surname: user.surname,
         name: user.name,
+        public_key: user.public_key,
     }))
 }

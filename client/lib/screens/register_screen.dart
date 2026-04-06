@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import '../services/encryption_service.dart';
 import '../models/user.dart';
 import '../models/department.dart';
 
@@ -104,6 +106,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = true);
 
     try {
+      // Генерируем ключевую пару
+      final keyPair = EncryptionService.generateKeyPair();
+
+      // Сохраняем приватный ключ на устройстве
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('private_key', keyPair.privateKey);
+
       final user = User(
         surname: _surnameController.text.trim(),
         name: _nameController.text.trim(),
@@ -114,6 +123,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         comment: _commentController.text.trim().isEmpty
             ? null
             : _commentController.text.trim(),
+        publicKey: keyPair.publicKey,
       );
 
       await _apiService.register(user, _passwordController.text);

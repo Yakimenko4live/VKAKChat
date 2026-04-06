@@ -189,6 +189,27 @@ pub async fn get_user_chats(
     Ok(Json(result))
 }
 
+
+pub async fn get_user_public_key(
+    State(state): State<AppState>,
+    Path(user_id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    
+    let user = sqlx::query!(
+        "SELECT public_key FROM users WHERE id = $1",
+        user_id
+    )
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+    
+    match user {
+        Some(u) => Ok(Json(serde_json::json!({ "public_key": u.public_key }))),
+        None => Err((StatusCode::NOT_FOUND, "User not found".to_string())),
+    }
+}
+
+
 pub async fn get_chat_messages(
     State(state): State<AppState>,
     Path(chat_id): Path<Uuid>,

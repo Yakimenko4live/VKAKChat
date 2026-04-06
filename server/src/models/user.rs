@@ -9,6 +9,7 @@ pub struct RegisterRequest {
     pub department_id: Uuid,
     pub comment: Option<String>,
     pub password: String,
+    pub public_key: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -26,4 +27,5 @@ pub struct LoginResponse {
     pub patronymic: Option<String>,
     pub department_name: Option<String>,
     pub is_approved: bool,
+    pub public_key: Option<String>, 
 }

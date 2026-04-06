@@ -87,6 +87,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/register", post(handlers::auth::register))
         .route("/api/login", post(handlers::auth::login))
         .route("/api/me", get(handlers::auth::me))
+        .route("/api/users/:user_id/public_key", get(handlers::chats::get_user_public_key))
         .nest("/", protected_routes)
         .layer(ServiceBuilder::new().layer(axum::middleware::from_fn(utf8_middleware)))
         .layer(cors)
