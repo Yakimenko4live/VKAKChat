@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../services/websocket_service.dart';
 import '../models/chat.dart';
+import '../services/chat_keys_service.dart';
+import '../services/encryption_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -29,10 +31,16 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _currentUserId;
   late WebSocketService _webSocketService;
 
+  // Поля для шифрования
+  String? _myPrivateKey;
+  String? _otherPublicKey;
+  bool _isEncryptionReady = false;
+
   @override
   void initState() {
     super.initState();
     _loadCurrentUser();
+    _loadKeys();
     _loadMessages();
 
     _webSocketService = Provider.of<WebSocketService>(context, listen: false);
@@ -47,16 +55,6 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  void _onNewMessage(MessageResponse message) {
-    print('📨 onNewMessage called: ${message.content}');
-    if (message.chatId == widget.chatId && mounted) {
-      print('✅ Adding message to chat');
-      setState(() {
-        _messages.add(message);
-      });
-    }
-  }
-
   Future<void> _loadCurrentUser() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -64,13 +62,80 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  Future<void> _loadKeys() async {
+    final prefs = await SharedPreferences.getInstance();
+    _myPrivateKey = prefs.getString('private_key');
+
+    if (_myPrivateKey == null) {
+      print('❌ Приватный ключ не найден');
+      return;
+    }
+
+    // Получаем публичный ключ собеседника
+    try {
+      _otherPublicKey = await _apiService.getPublicKey(widget.otherUserId);
+      if (_otherPublicKey != null) {
+        // Проверяем, есть ли уже общий секрет для этого чата
+        final existingSecret = await ChatKeysService.getSharedSecret(
+          widget.chatId,
+        );
+        if (existingSecret != null) {
+          _isEncryptionReady = true;
+          print('✅ Общий секрет уже существует для чата ${widget.chatId}');
+        } else {
+          // Генерируем общий секрет
+          await ChatKeysService.generateAndSaveSharedSecret(
+            widget.chatId,
+            widget.otherUserId,
+            _myPrivateKey!,
+            _otherPublicKey!,
+          );
+          _isEncryptionReady = true;
+          print('✅ Общий секрет сгенерирован для чата ${widget.chatId}');
+        }
+      }
+    } catch (e) {
+      print('❌ Ошибка получения публичного ключа: $e');
+    }
+  }
+
   Future<void> _loadMessages() async {
     try {
       final messages = await _apiService.getChatMessages(widget.chatId);
-      setState(() {
-        _messages = messages;
-        _isLoading = false;
-      });
+      final sharedSecret = await ChatKeysService.getSharedSecret(widget.chatId);
+
+      if (sharedSecret != null) {
+        final decryptedMessages = <MessageResponse>[];
+        for (final msg in messages) {
+          try {
+            final decryptedText = EncryptionService.decryptMessage(
+              msg.content,
+              sharedSecret,
+            );
+            decryptedMessages.add(
+              MessageResponse(
+                id: msg.id,
+                chatId: msg.chatId,
+                senderId: msg.senderId,
+                content: decryptedText,
+                isRead: msg.isRead,
+                createdAt: msg.createdAt,
+              ),
+            );
+          } catch (e) {
+            decryptedMessages.add(msg);
+          }
+        }
+        setState(() {
+          _messages = decryptedMessages;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _messages = messages;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
@@ -87,14 +152,86 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _messageController.clear();
 
-    print(
-      '📤 Sending message via WebSocket: chatId=${widget.chatId}, text=$text, userId=$_currentUserId',
-    );
+    if (!_isEncryptionReady) {
+      print('❌ Шифрование не готово');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Шифрование не готово. Пожалуйста, подождите.'),
+        ),
+      );
+      return;
+    }
 
-    if (_currentUserId != null) {
-      _webSocketService.sendMessage(widget.chatId, text, _currentUserId!);
-    } else {
+    if (_currentUserId == null) {
       print('❌ Cannot send: userId is null');
+      return;
+    }
+
+    final sharedSecret = await ChatKeysService.getSharedSecret(widget.chatId);
+    if (sharedSecret == null) {
+      print('❌ Нет общего секрета');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ошибка шифрования. Попробуйте позже.')),
+      );
+      return;
+    }
+
+    // Шифруем сообщение
+    final encryptedMessage = EncryptionService.encryptMessage(
+      text,
+      sharedSecret,
+    );
+    print('📤 Отправка зашифрованного сообщения: $encryptedMessage');
+
+    _webSocketService.sendMessage(
+      widget.chatId,
+      encryptedMessage,
+      _currentUserId!,
+    );
+  }
+
+  void _onNewMessage(MessageResponse message) {
+    print('📨 Получено сообщение: ${message.content}');
+
+    if (message.chatId == widget.chatId && mounted) {
+      _decryptAndAddMessage(message);
+    }
+  }
+
+  Future<void> _decryptAndAddMessage(MessageResponse message) async {
+    final sharedSecret = await ChatKeysService.getSharedSecret(widget.chatId);
+    if (sharedSecret == null) {
+      print('❌ Нет общего секрета для расшифровки');
+      setState(() {
+        _messages.add(message);
+      });
+      return;
+    }
+
+    try {
+      final decryptedText = EncryptionService.decryptMessage(
+        message.content,
+        sharedSecret,
+      );
+      print('📨 Расшифровано: $decryptedText');
+
+      final decryptedMessage = MessageResponse(
+        id: message.id,
+        chatId: message.chatId,
+        senderId: message.senderId,
+        content: decryptedText,
+        isRead: message.isRead,
+        createdAt: message.createdAt,
+      );
+
+      setState(() {
+        _messages.add(decryptedMessage);
+      });
+    } catch (e) {
+      print('❌ Ошибка расшифровки: $e');
+      setState(() {
+        _messages.add(message);
+      });
     }
   }
 

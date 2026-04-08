@@ -90,10 +90,27 @@ class ApiService {
     }
   }
 
+  Future<String?> getPublicKey(String userId) async {
+    final headers = await _getHeaders();
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/users/$userId/public_key'),
+      headers: headers,
+    );
+
+    if (response.statusCode == 200) {
+      final decodedBody = utf8.decode(response.bodyBytes);
+      final data = json.decode(decodedBody);
+      return data['public_key'];
+    }
+    return null;
+  }
+
   Future<List<UserSearchResult>> searchUsers(String query) async {
     final headers = await _getHeaders();
     final response = await http.get(
-      Uri.parse('$baseUrl/api/users/search?q=${Uri.encodeQueryComponent(query)}'),
+      Uri.parse(
+        '$baseUrl/api/users/search?q=${Uri.encodeQueryComponent(query)}',
+      ),
       headers: headers,
     );
 
