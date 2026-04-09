@@ -1,11 +1,18 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../services/websocket_service.dart';
-import '../models/chat.dart';
+import '../services/file_service.dart';
 import '../services/chat_keys_service.dart';
 import '../services/encryption_service.dart';
+import '../models/chat.dart';
+import '../widgets/file_message_widget.dart';
+import '../widgets/image_message_widget.dart';
+import 'dart:convert';
+
+enum MessageType { text, image, file }
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -31,10 +38,11 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _currentUserId;
   late WebSocketService _webSocketService;
 
-  // Поля для шифрования
   String? _myPrivateKey;
   String? _otherPublicKey;
   bool _isEncryptionReady = false;
+
+  final Map<String, Uint8List> _fileCache = {};
 
   @override
   void initState() {
@@ -49,7 +57,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    // Очищаем подписку, чтобы не было утечек памяти при закрытии чата
     _webSocketService.onNewMessage = null;
     _messageController.dispose();
     super.dispose();
@@ -71,11 +78,9 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    // Получаем публичный ключ собеседника
     try {
       _otherPublicKey = await _apiService.getPublicKey(widget.otherUserId);
       if (_otherPublicKey != null) {
-        // Проверяем, есть ли уже общий секрет для этого чата
         final existingSecret = await ChatKeysService.getSharedSecret(
           widget.chatId,
         );
@@ -83,7 +88,6 @@ class _ChatScreenState extends State<ChatScreen> {
           _isEncryptionReady = true;
           print('✅ Общий секрет уже существует для чата ${widget.chatId}');
         } else {
-          // Генерируем общий секрет
           await ChatKeysService.generateAndSaveSharedSecret(
             widget.chatId,
             widget.otherUserId,
@@ -107,23 +111,27 @@ class _ChatScreenState extends State<ChatScreen> {
       if (sharedSecret != null) {
         final decryptedMessages = <MessageResponse>[];
         for (final msg in messages) {
-          try {
-            final decryptedText = EncryptionService.decryptMessage(
-              msg.content,
-              sharedSecret,
-            );
-            decryptedMessages.add(
-              MessageResponse(
-                id: msg.id,
-                chatId: msg.chatId,
-                senderId: msg.senderId,
-                content: decryptedText,
-                isRead: msg.isRead,
-                createdAt: msg.createdAt,
-              ),
-            );
-          } catch (e) {
+          if (msg.content.startsWith('{')) {
             decryptedMessages.add(msg);
+          } else {
+            try {
+              final decryptedText = EncryptionService.decryptMessage(
+                msg.content,
+                sharedSecret,
+              );
+              decryptedMessages.add(
+                MessageResponse(
+                  id: msg.id,
+                  chatId: msg.chatId,
+                  senderId: msg.senderId,
+                  content: decryptedText,
+                  isRead: msg.isRead,
+                  createdAt: msg.createdAt,
+                ),
+              );
+            } catch (e) {
+              decryptedMessages.add(msg);
+            }
           }
         }
         setState(() {
@@ -146,53 +154,130 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _sendMessage() async {
-    final text = _messageController.text.trim();
+  Future<void> _sendTextMessage(String text) async {
     if (text.isEmpty) return;
-
-    _messageController.clear();
-
-    if (!_isEncryptionReady) {
-      print('❌ Шифрование не готово');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Шифрование не готово. Пожалуйста, подождите.'),
-        ),
-      );
-      return;
-    }
-
-    if (_currentUserId == null) {
-      print('❌ Cannot send: userId is null');
-      return;
-    }
+    if (!_isEncryptionReady || _currentUserId == null) return;
 
     final sharedSecret = await ChatKeysService.getSharedSecret(widget.chatId);
-    if (sharedSecret == null) {
-      print('❌ Нет общего секрета');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ошибка шифрования. Попробуйте позже.')),
-      );
-      return;
-    }
+    if (sharedSecret == null) return;
 
-    // Шифруем сообщение
     final encryptedMessage = EncryptionService.encryptMessage(
       text,
       sharedSecret,
     );
-    print('📤 Отправка зашифрованного сообщения: $encryptedMessage');
-
     _webSocketService.sendMessage(
       widget.chatId,
       encryptedMessage,
       _currentUserId!,
     );
+    _messageController.clear();
+  }
+
+  Future<void> _sendFile(
+    Map<String, dynamic> fileData,
+    MessageType type,
+  ) async {
+    if (!_isEncryptionReady || _currentUserId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Шифрование не готово')));
+      return;
+    }
+
+    final sharedSecret = await ChatKeysService.getSharedSecret(widget.chatId);
+    if (sharedSecret == null) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final fileId = await FileService.uploadFile(
+        chatId: widget.chatId,
+        fileBytes: fileData['bytes'],
+        filename: fileData['name'],
+        sharedSecret: sharedSecret,
+      );
+
+      final messageData = {
+        'type': type == MessageType.image ? 'image' : 'file',
+        'data': {
+          'file_id': fileId,
+          'filename': fileData['name'],
+          'size': fileData['size'],
+          'mime_type': fileData['mimeType'],
+        },
+      };
+
+      final jsonMessage = json.encode(messageData);
+      _webSocketService.sendMessage(
+        widget.chatId,
+        jsonMessage,
+        _currentUserId!,
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Ошибка отправки файла: $e')));
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final imageData = await FileService.pickImage();
+    if (imageData != null) await _sendFile(imageData, MessageType.image);
+  }
+
+  Future<void> _pickFile() async {
+    final fileData = await FileService.pickFile();
+    if (fileData != null) await _sendFile(fileData, MessageType.file);
+  }
+
+  Future<void> _downloadAndShowFile(
+    String fileId,
+    String filename,
+    int size,
+  ) async {
+    final sharedSecret = await ChatKeysService.getSharedSecret(widget.chatId);
+    if (sharedSecret == null) return;
+
+    if (_fileCache.containsKey(fileId)) {
+      _openFile(_fileCache[fileId]!, filename);
+      return;
+    }
+
+    try {
+      final fileData = await FileService.downloadFile(
+        chatId: widget.chatId,
+        fileId: fileId,
+        sharedSecret: sharedSecret,
+      );
+      _fileCache[fileId] = fileData;
+      _openFile(fileData, filename);
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Ошибка загрузки файла: $e')));
+    }
+  }
+
+  void _openFile(Uint8List data, String filename) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(filename),
+        content: Text('Файл загружен. Размер: ${data.length} байт'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _onNewMessage(MessageResponse message) {
     print('📨 Получено сообщение: ${message.content}');
-
     if (message.chatId == widget.chatId && mounted) {
       _decryptAndAddMessage(message);
     }
@@ -201,10 +286,12 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _decryptAndAddMessage(MessageResponse message) async {
     final sharedSecret = await ChatKeysService.getSharedSecret(widget.chatId);
     if (sharedSecret == null) {
-      print('❌ Нет общего секрета для расшифровки');
-      setState(() {
-        _messages.add(message);
-      });
+      setState(() => _messages.add(message));
+      return;
+    }
+
+    if (message.content.startsWith('{')) {
+      setState(() => _messages.add(message));
       return;
     }
 
@@ -213,8 +300,6 @@ class _ChatScreenState extends State<ChatScreen> {
         message.content,
         sharedSecret,
       );
-      print('📨 Расшифровано: $decryptedText');
-
       final decryptedMessage = MessageResponse(
         id: message.id,
         chatId: message.chatId,
@@ -223,16 +308,133 @@ class _ChatScreenState extends State<ChatScreen> {
         isRead: message.isRead,
         createdAt: message.createdAt,
       );
-
-      setState(() {
-        _messages.add(decryptedMessage);
-      });
+      setState(() => _messages.add(decryptedMessage));
     } catch (e) {
-      print('❌ Ошибка расшифровки: $e');
-      setState(() {
-        _messages.add(message);
-      });
+      setState(() => _messages.add(message));
     }
+  }
+
+  Widget _buildMessageBubble(MessageResponse message, bool isMe) {
+    if (message.content.startsWith('{')) {
+      try {
+        final data = json.decode(message.content);
+        final type = data['type'];
+        final fileData = data['data'];
+
+        if (type == 'image') {
+          return FutureBuilder<Uint8List?>(
+            future: _loadImage(fileData['file_id']),
+            builder: (context, snapshot) {
+              if (snapshot.hasData && snapshot.data != null) {
+                return ImageMessageWidget(
+                  imageData: snapshot.data!,
+                  isMe: isMe,
+                );
+              }
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: isMe ? Colors.green : Colors.grey[800],
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const SizedBox(
+                  width: 50,
+                  height: 50,
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              );
+            },
+          );
+        } else if (type == 'file') {
+          return FileMessageWidget(
+            filename: fileData['filename'],
+            size: fileData['size'],
+            isMe: isMe,
+            onTap: () => _downloadAndShowFile(
+              fileData['file_id'],
+              fileData['filename'],
+              fileData['size'],
+            ),
+          );
+        }
+      } catch (e) {}
+    }
+
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: isMe ? Colors.green : Colors.grey[800],
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          message.content,
+          style: const TextStyle(color: Colors.white),
+        ),
+      ),
+    );
+  }
+
+  Future<Uint8List?> _loadImage(String fileId) async {
+    if (_fileCache.containsKey(fileId)) return _fileCache[fileId];
+
+    final sharedSecret = await ChatKeysService.getSharedSecret(widget.chatId);
+    if (sharedSecret == null) return null;
+
+    try {
+      final imageData = await FileService.downloadFile(
+        chatId: widget.chatId,
+        fileId: fileId,
+        sharedSecret: sharedSecret,
+      );
+      _fileCache[fileId] = imageData;
+      return imageData;
+    } catch (e) {
+      print('❌ Ошибка загрузки изображения: $e');
+      return null;
+    }
+  }
+
+  void _showAttachmentMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.image, color: Colors.green),
+              title: const Text(
+                'Изображение',
+                style: TextStyle(color: Colors.white),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.insert_drive_file, color: Colors.green),
+              title: const Text('Файл', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                _pickFile();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -270,7 +472,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     padding: const EdgeInsets.all(16),
                     itemCount: _messages.length,
                     itemBuilder: (context, index) {
-                      // Оптимизировано: берем элемент с конца массива без создания нового списка
                       final message = _messages[_messages.length - 1 - index];
                       final isMe = message.senderId == _currentUserId;
                       return _buildMessageBubble(message, isMe);
@@ -285,6 +486,10 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             child: Row(
               children: [
+                IconButton(
+                  onPressed: _showAttachmentMenu,
+                  icon: const Icon(Icons.attach_file, color: Colors.green),
+                ),
                 Expanded(
                   child: TextField(
                     controller: _messageController,
@@ -295,34 +500,18 @@ class _ChatScreenState extends State<ChatScreen> {
                       border: InputBorder.none,
                       contentPadding: EdgeInsets.symmetric(horizontal: 16),
                     ),
+                    onSubmitted: (_) =>
+                        _sendTextMessage(_messageController.text),
                   ),
                 ),
                 IconButton(
-                  onPressed: _sendMessage,
+                  onPressed: () => _sendTextMessage(_messageController.text),
                   icon: const Icon(Icons.send, color: Colors.green),
                 ),
               ],
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildMessageBubble(MessageResponse message, bool isMe) {
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: isMe ? Colors.green : Colors.grey[800],
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          message.content,
-          style: const TextStyle(color: Colors.white),
-        ),
       ),
     );
   }

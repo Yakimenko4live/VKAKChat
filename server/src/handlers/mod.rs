@@ -1,6 +1,8 @@
 pub mod auth;
 pub mod chats;
 pub mod departments;
+pub mod files;
 pub mod health;
 pub mod users;
 pub mod websocket;
+pub mod admin;

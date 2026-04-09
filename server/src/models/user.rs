@@ -27,5 +27,19 @@ pub struct LoginResponse {
     pub patronymic: Option<String>,
     pub department_name: Option<String>,
     pub is_approved: bool,
-    pub public_key: Option<String>, 
+    pub public_key: Option<String>,
+    pub role: String,  // Добавить
+}
+
+#[derive(Debug, Serialize)]
+pub struct MeResponse {
+    pub user_id: Uuid,
+    pub surname: String,
+    pub name: String,
+    pub patronymic: Option<String>,
+    pub department_name: Option<String>,
+    pub comment: Option<String>,
+    pub is_approved: bool,
+    pub public_key: Option<String>,
+    pub role: String,  // Добавить
 }

@@ -6,6 +6,7 @@ class LoginResponse {
   final String? patronymic;
   final String? departmentName;
   final bool isApproved;
+  final String role;
 
   LoginResponse({
     required this.userId,
@@ -15,6 +16,7 @@ class LoginResponse {
     this.patronymic,
     this.departmentName,
     required this.isApproved,
+    required this.role,
   });
 
   factory LoginResponse.fromJson(Map<String, dynamic> json) {
@@ -26,6 +28,7 @@ class LoginResponse {
       patronymic: json['patronymic'],
       departmentName: json['department_name'],
       isApproved: json['is_approved'] ?? false,
+      role: json['role'] ?? 'user',
     );
   }
 }
@@ -38,6 +41,7 @@ class UserData {
   final String? departmentName;
   final String? comment;
   final bool isApproved;
+  final String role;
 
   UserData({
     required this.userId,
@@ -47,6 +51,7 @@ class UserData {
     this.departmentName,
     this.comment,
     required this.isApproved,
+    required this.role,
   });
 
   factory UserData.fromJson(Map<String, dynamic> json) {
@@ -58,6 +63,7 @@ class UserData {
       departmentName: json['department_name'],
       comment: json['comment'],
       isApproved: json['is_approved'] ?? false,
+      role: json['role'] ?? 'user',
     );
   }
 }

@@ -20,7 +20,6 @@ class WebSocketService extends ChangeNotifier {
   int _reconnectAttempts = 0;
   static const int _maxReconnectAttempts = 10;
 
-  // Callback для новых сообщений
   Function(MessageResponse)? onNewMessage;
 
   ConnectionQuality get quality => _quality;
@@ -51,7 +50,6 @@ class WebSocketService extends ChangeNotifier {
       _subscription = _channel!.stream.listen(
         (message) {
           _handleMessage(message);
-          print('📨 WebSocket received raw: $message');
           if (_quality == ConnectionQuality.disconnected) {
             _updateQuality(ConnectionQuality.excellent);
             _reconnectAttempts = 0;
@@ -79,14 +77,15 @@ class WebSocketService extends ChangeNotifier {
   }
 
   void _handleMessage(dynamic message) {
-    if (message == 'pong' && _lastPingSent != null) {
-      _currentLatency = DateTime.now().difference(_lastPingSent!);
-      _updateQualityByLatency(_currentLatency);
-      notifyListeners();
+    if (message == 'pong') {
+      if (_lastPingSent != null) {
+        _currentLatency = DateTime.now().difference(_lastPingSent!);
+        _updateQualityByLatency(_currentLatency);
+        notifyListeners();
+      }
       return;
     }
 
-    // Пытаемся распарсить как JSON (сообщение)
     try {
       final data = json.decode(message);
       if (data['type'] == 'new_message') {
@@ -94,24 +93,17 @@ class WebSocketService extends ChangeNotifier {
         onNewMessage?.call(msg);
       }
     } catch (e) {
-      // Логируем ошибку парсинга, чтобы не терять сообщения молча
-      print('❌ Ошибка парсинга сообщения WebSocket: $e');
+      // ignore
     }
   }
 
   void sendMessage(String chatId, String content, String senderId) {
-    print(
-      '📤 WebSocket.sendMessage called: chatId=$chatId, content=$content, senderId=$senderId',
-    );
     if (_channel != null) {
       final message = json.encode({
         'type': 'message',
         'data': {'chat_id': chatId, 'content': content, 'sender_id': senderId},
       });
-      print('📤 Sending WebSocket message: $message');
       _channel!.sink.add(message);
-    } else {
-      print('❌ WebSocket channel is null!');
     }
   }
 
