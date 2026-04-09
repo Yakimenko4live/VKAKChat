@@ -203,4 +203,44 @@ class ApiService {
       throw Exception('Failed to send message');
     }
   }
+
+  Future<List<UserSearchResult>> getPendingUsers() async {
+    final headers = await _getHeaders();
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/admin/pending'),
+      headers: headers,
+    );
+
+    if (response.statusCode == 200) {
+      final decodedBody = utf8.decode(response.bodyBytes);
+      final List<dynamic> data = json.decode(decodedBody);
+      return data.map((json) => UserSearchResult.fromJson(json)).toList();
+    } else {
+      throw Exception('Failed to load pending users');
+    }
+  }
+
+  Future<void> approveUser(String userId) async {
+    final headers = await _getHeaders();
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/admin/approve/$userId'),
+      headers: headers,
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to approve user');
+    }
+  }
+
+  Future<void> rejectUser(String userId) async {
+    final headers = await _getHeaders();
+    final response = await http.delete(
+      Uri.parse('$baseUrl/api/admin/reject/$userId'),
+      headers: headers,
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to reject user');
+    }
+  }
 }

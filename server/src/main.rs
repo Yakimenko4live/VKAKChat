@@ -9,6 +9,7 @@ use std::{env, net::SocketAddr};
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
+use axum::routing::delete;
 
 mod handlers;
 mod middleware;
@@ -92,6 +93,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/files/download/:chat_id/:file_id", get(handlers::files::download_file))
         .route("/api/admin/pending", get(handlers::admin::get_pending_users))
         .route("/api/admin/approve/:user_id", post(handlers::admin::approve_user))
+        .route("/api/admin/reject/:user_id", delete(handlers::admin::reject_user))
         .nest("/", protected_routes)
         .layer(ServiceBuilder::new().layer(axum::middleware::from_fn(utf8_middleware)))
         .layer(cors)

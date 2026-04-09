@@ -37,6 +37,9 @@ class _LoginScreenState extends State<LoginScreen> {
         _passwordController.text,
       );
 
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_role', response.role);
+
       print('Login success: ${response.userId}');
 
       // Аутентифицируем WebSocket

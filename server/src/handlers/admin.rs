@@ -95,3 +95,33 @@ pub async fn approve_user(
     
     Ok(StatusCode::OK)
 }
+
+pub async fn reject_user(
+    State(state): State<AppState>,
+    Extension(user_id): Extension<Uuid>,
+    Path(target_user_id): Path<Uuid>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    
+    let user_role: Option<String> = sqlx::query_scalar(
+        "SELECT role FROM users WHERE id = $1"
+    )
+    .bind(user_id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+    
+    let user_role = user_role.unwrap_or_default();
+    if user_role != "super_admin" {
+        return Err((StatusCode::FORBIDDEN, "Access denied".to_string()));
+    }
+    
+    sqlx::query(
+        "DELETE FROM users WHERE id = $1"
+    )
+    .bind(target_user_id)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+    
+    Ok(StatusCode::OK)
+}
