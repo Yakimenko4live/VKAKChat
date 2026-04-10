@@ -1,7 +1,7 @@
 use axum::{
     http::{HeaderValue, Request},
     response::Response,
-    routing::{get, post},
+    routing::{get, post, delete},
     Router,
 };
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
@@ -9,7 +9,6 @@ use std::{env, net::SocketAddr};
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
-use axum::routing::delete;
 
 mod handlers;
 mod middleware;
@@ -79,6 +78,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/messages/send", post(handlers::chats::send_message))
         .route("/api/users/search", get(handlers::users::search_users))
         .route("/api/departments/tree", get(handlers::departments::get_department_tree))
+        .route("/api/users/:user_id/public_key", get(handlers::chats::get_user_public_key))
+        .route("/api/admin/pending", get(handlers::admin::get_pending_users))
+        .route("/api/admin/approve/:user_id", post(handlers::admin::approve_user))
+        .route("/api/admin/reject/:user_id", delete(handlers::admin::reject_user))
         .layer(axum::middleware::from_fn(auth_middleware));
     
     let app = Router::new()
@@ -88,12 +91,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/register", post(handlers::auth::register))
         .route("/api/login", post(handlers::auth::login))
         .route("/api/me", get(handlers::auth::me))
-        .route("/api/users/:user_id/public_key", get(handlers::chats::get_user_public_key))
         .route("/api/files/upload", post(handlers::files::upload_file))
         .route("/api/files/download/:chat_id/:file_id", get(handlers::files::download_file))
-        .route("/api/admin/pending", get(handlers::admin::get_pending_users))
-        .route("/api/admin/approve/:user_id", post(handlers::admin::approve_user))
-        .route("/api/admin/reject/:user_id", delete(handlers::admin::reject_user))
         .nest("/", protected_routes)
         .layer(ServiceBuilder::new().layer(axum::middleware::from_fn(utf8_middleware)))
         .layer(cors)

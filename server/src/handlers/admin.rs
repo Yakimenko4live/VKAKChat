@@ -25,16 +25,25 @@ pub async fn get_pending_users(
     Extension(user_id): Extension<Uuid>,
 ) -> Result<Json<Vec<PendingUser>>, (StatusCode, String)> {
     
+    println!("🔐 get_pending_users called by user: {}", user_id);
+    
+    // Проверяем права
     let user_role: Option<String> = sqlx::query_scalar(
         "SELECT role FROM users WHERE id = $1"
     )
     .bind(user_id)
     .fetch_one(&state.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+    .map_err(|e| {
+        println!("❌ Database error in role check: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e))
+    })?;
+    
+    println!("🔐 User role: {:?}", user_role);
     
     let user_role = user_role.unwrap_or_default();
     if user_role != "super_admin" && user_role != "admin" {
+        println!("❌ Access denied for user {}", user_id);
         return Err((StatusCode::FORBIDDEN, "Access denied".to_string()));
     }
     
@@ -49,7 +58,12 @@ pub async fn get_pending_users(
     )
     .fetch_all(&state.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+    .map_err(|e| {
+        println!("❌ Database error in query: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e))
+    })?;
+    
+    println!("✅ Found {} pending users", rows.len());
     
     let users: Vec<PendingUser> = rows.iter().map(|row| {
         PendingUser {
@@ -65,7 +79,6 @@ pub async fn get_pending_users(
     
     Ok(Json(users))
 }
-
 pub async fn approve_user(
     State(state): State<AppState>,
     Extension(user_id): Extension<Uuid>,
