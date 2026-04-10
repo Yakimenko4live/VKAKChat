@@ -204,6 +204,66 @@ class ApiService {
     }
   }
 
+  Future<UserData> getCurrentUser() async {
+    final headers = await _getHeaders();
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/me'),
+      headers: headers,
+    );
+
+    if (response.statusCode == 200) {
+      final decodedBody = utf8.decode(response.bodyBytes);
+      final data = json.decode(decodedBody);
+      return UserData.fromJson(data);
+    } else {
+      throw Exception('Failed to load user data');
+    }
+  }
+
+  Future<void> updateProfile({
+    required String surname,
+    required String name,
+    String? patronymic,
+    String? comment,
+  }) async {
+    final headers = await _getHeaders();
+    final response = await http.put(
+      Uri.parse('$baseUrl/api/me'),
+      headers: headers,
+      body: utf8.encode(
+        json.encode({
+          'surname': surname,
+          'name': name,
+          'patronymic': patronymic,
+          'comment': comment,
+        }),
+      ),
+    );
+
+    if (response.statusCode != 200) {
+      final decodedBody = utf8.decode(response.bodyBytes);
+      final error = json.decode(decodedBody);
+      throw Exception(error['message'] ?? 'Failed to update profile');
+    }
+  }
+
+  Future<void> changePassword(String oldPassword, String newPassword) async {
+    final headers = await _getHeaders();
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/change-password'),
+      headers: headers,
+      body: utf8.encode(
+        json.encode({'old_password': oldPassword, 'new_password': newPassword}),
+      ),
+    );
+
+    if (response.statusCode != 200) {
+      final decodedBody = utf8.decode(response.bodyBytes);
+      final error = json.decode(decodedBody);
+      throw Exception(error['message'] ?? 'Failed to change password');
+    }
+  }
+
   Future<List<UserSearchResult>> getPendingUsers() async {
     final headers = await _getHeaders();
     final response = await http.get(

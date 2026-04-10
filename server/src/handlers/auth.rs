@@ -13,6 +13,7 @@ use argon2::{
 use tracing::info;
 
 use crate::state::AppState;
+use axum::Extension;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
@@ -64,6 +65,21 @@ pub struct LoginResponse {
     pub name: String,
     pub public_key: Option<String>,
     pub role: String,
+}
+
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateProfileRequest {
+    pub surname: String,
+    pub name: String,
+    pub patronymic: Option<String>,
+    pub comment: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ChangePasswordRequest {
+    pub old_password: String,
+    pub new_password: String,
 }
 
 pub async fn me(
@@ -254,4 +270,73 @@ pub async fn login(
         public_key: user.public_key,
         role: user.role.unwrap_or_default(),
     }))
+}
+
+pub async fn update_profile(
+    State(state): State<AppState>,
+    Extension(user_id): Extension<Uuid>,
+    Json(req): Json<UpdateProfileRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    
+    sqlx::query(
+        r#"
+        UPDATE users 
+        SET surname = $1, name = $2, patronymic = $3, comment = $4
+        WHERE id = $5
+        "#
+    )
+    .bind(&req.surname)
+    .bind(&req.name)
+    .bind(&req.patronymic)
+    .bind(&req.comment)
+    .bind(user_id)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+    
+    Ok(StatusCode::OK)
+}
+
+pub async fn change_password(
+    State(state): State<AppState>,
+    Extension(user_id): Extension<Uuid>,
+    Json(req): Json<ChangePasswordRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    
+    let user = sqlx::query!(
+        "SELECT password_hash FROM users WHERE id = $1",
+        user_id
+    )
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+    
+    let parsed_hash = PasswordHash::new(&user.password_hash)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Parse error: {}", e)))?;
+    
+    let valid = Argon2::default()
+        .verify_password(req.old_password.as_bytes(), &parsed_hash)
+        .is_ok();
+    
+    if !valid {
+        return Err((StatusCode::UNAUTHORIZED, "Неверный текущий пароль".to_string()));
+    }
+    
+    let salt = SaltString::generate(&mut OsRng);
+    let argon2 = Argon2::default();
+    let new_hash = argon2
+        .hash_password(req.new_password.as_bytes(), &salt)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Hash error: {}", e)))?
+        .to_string();
+    
+    sqlx::query(
+        "UPDATE users SET password_hash = $1 WHERE id = $2"
+    )
+    .bind(new_hash)
+    .bind(user_id)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+    
+    Ok(StatusCode::OK)
 }

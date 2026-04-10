@@ -1,7 +1,7 @@
 use axum::{
     http::{HeaderValue, Request},
     response::Response,
-    routing::{get, post, delete},
+    routing::{get, post, delete, put},
     Router,
 };
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
@@ -84,20 +84,22 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/admin/reject/:user_id", delete(handlers::admin::reject_user))
         .layer(axum::middleware::from_fn(auth_middleware));
     
-    let app = Router::new()
-        .route("/health", get(handlers::health::health_check))
-        .route("/ws", get(handlers::websocket::websocket_handler))
-        .route("/api/departments", get(handlers::departments::get_departments))
-        .route("/api/register", post(handlers::auth::register))
-        .route("/api/login", post(handlers::auth::login))
-        .route("/api/me", get(handlers::auth::me))
-        .route("/api/files/upload", post(handlers::files::upload_file))
-        .route("/api/files/download/:chat_id/:file_id", get(handlers::files::download_file))
-        .nest("/", protected_routes)
-        .layer(ServiceBuilder::new().layer(axum::middleware::from_fn(utf8_middleware)))
-        .layer(cors)
-        .layer(TraceLayer::new_for_http())
-        .with_state(app_state);
+let app = Router::new()
+    .route("/health", get(handlers::health::health_check))
+    .route("/ws", get(handlers::websocket::websocket_handler))
+    .route("/api/departments", get(handlers::departments::get_departments))
+    .route("/api/register", post(handlers::auth::register))
+    .route("/api/login", post(handlers::auth::login))
+    .route("/api/me", get(handlers::auth::me))
+    .route("/api/me/update", put(handlers::auth::update_profile))
+    .route("/api/change-password", post(handlers::auth::change_password))
+    .route("/api/files/upload", post(handlers::files::upload_file))
+    .route("/api/files/download/:chat_id/:file_id", get(handlers::files::download_file))
+    .nest("/", protected_routes)
+    .layer(ServiceBuilder::new().layer(axum::middleware::from_fn(utf8_middleware)))
+    .layer(cors)
+    .layer(TraceLayer::new_for_http())
+    .with_state(app_state);
     
     let addr: SocketAddr = "0.0.0.0:3000".parse()?;
     println!("🚀 Server running on http://{}", addr);
