@@ -37,10 +37,12 @@ class _LoginScreenState extends State<LoginScreen> {
         _passwordController.text,
       );
 
+      print('✅ Login success: ${response.userId}');
+      print('👤 User role from server: ${response.role}');
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('user_role', response.role);
-
-      print('Login success: ${response.userId}');
+      print('💾 Role saved: ${prefs.getString('user_role')}');
 
       // Аутентифицируем WebSocket
       final wsService = Provider.of<WebSocketService>(context, listen: false);
@@ -49,12 +51,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final authService = AuthService();
       await authService.saveSession(response.token, response.userId);
 
-      // final prefs = await SharedPreferences.getInstance();
-      // await prefs.setString('userId', response.userId);
-      // await prefs.setString('token', response.token);
-
       if (mounted) {
-        // Используем pushReplacement с MaterialPageRoute для простоты
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const MainScreen()),
