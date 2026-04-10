@@ -148,4 +148,51 @@ class FileService {
 
     return Uint8List.fromList(decrypted);
   }
+
+  static Future<Uint8List> downloadFileWithGroupKey({
+    required String chatId,
+    required String fileId,
+    required String groupKey,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/files/download/$chatId/$fileId'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode == 200) {
+      // Расшифровываем файл групповым ключом
+      return await _decryptFileDataWithGroupKey(response.bodyBytes, groupKey);
+    } else {
+      throw Exception('Failed to download file');
+    }
+  }
+
+  static Future<Uint8List> _decryptFileDataWithGroupKey(
+    List<int> encryptedData,
+    String groupKeyBase64,
+  ) async {
+    final groupKey = base64.decode(groupKeyBase64);
+
+    // Извлекаем IV (первые 16 байт)
+    final iv = encryptedData.sublist(0, 16);
+    final ciphertext = encryptedData.sublist(16);
+
+    // Создаём ключ из group key (первые 32 байта)
+    final keyBytes =
+        groupKey.length >= 32
+              ? groupKey.sublist(0, 32)
+              : List<int>.filled(32, 0)
+          ..setAll(0, groupKey);
+
+    // XOR расшифровка (для простоты, потом заменить на AES)
+    final decrypted = List<int>.from(ciphertext);
+    for (int i = 0; i < decrypted.length; i++) {
+      decrypted[i] = decrypted[i] ^ keyBytes[i % keyBytes.length];
+    }
+
+    return Uint8List.fromList(decrypted);
+  }
 }

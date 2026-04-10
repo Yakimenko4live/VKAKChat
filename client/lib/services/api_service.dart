@@ -5,6 +5,9 @@ import '../models/user.dart';
 import '../models/department.dart';
 import '../models/auth.dart';
 import '../models/chat.dart';
+import '../models/group_chat.dart';
+import '../services/group_encryption_service.dart';
+import '../services/encryption_service.dart';
 
 class ApiService {
   static const String baseUrl = 'http://localhost:3000';
@@ -301,6 +304,174 @@ class ApiService {
 
     if (response.statusCode != 200) {
       throw Exception('Failed to reject user');
+    }
+  }
+
+  // Добавь в конец класса ApiService
+
+  Future<GroupChat> createGroupChat(
+    String title,
+    List<String> participantIds,
+  ) async {
+    final headers = await _getHeaders();
+
+    // Получаем свой приватный ключ
+    final prefs = await SharedPreferences.getInstance();
+    final myPrivateKey = prefs.getString('private_key');
+    if (myPrivateKey == null) {
+      throw Exception('Приватный ключ не найден');
+    }
+
+    // Получаем свой публичный ключ
+    final currentUserId = prefs.getString('userId');
+    final myPublicKey = await getPublicKey(currentUserId!);
+    if (myPublicKey == null) {
+      throw Exception('Публичный ключ не найден');
+    }
+
+    // Генерируем общий ключ для группы
+    final groupKey = await GroupEncryptionService.generateGroupKey();
+
+    // Шифруем ключ для каждого участника
+    final Map<String, String> encryptedKeys = {};
+
+    // Для себя
+    final mySharedSecret = EncryptionService.deriveSharedSecret(
+      myPrivateKey,
+      myPublicKey,
+    );
+    final myEncryptedKey = EncryptionService.encryptMessage(
+      groupKey,
+      mySharedSecret,
+    );
+    encryptedKeys[currentUserId] = myEncryptedKey;
+
+    // Для остальных участников
+    for (final userId in participantIds) {
+      final userPublicKey = await getPublicKey(userId);
+      if (userPublicKey != null) {
+        final sharedSecret = EncryptionService.deriveSharedSecret(
+          myPrivateKey,
+          userPublicKey,
+        );
+        final encryptedKey = EncryptionService.encryptMessage(
+          groupKey,
+          sharedSecret,
+        );
+        encryptedKeys[userId] = encryptedKey;
+      }
+    }
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/groups/create'),
+      headers: headers,
+      body: utf8.encode(
+        json.encode({
+          'title': title,
+          'participant_ids': participantIds,
+          'encrypted_keys': encryptedKeys,
+        }),
+      ),
+    );
+
+    if (response.statusCode == 200) {
+      final decodedBody = utf8.decode(response.bodyBytes);
+      final data = json.decode(decodedBody);
+      // Сохраняем ключ группы локально
+      await GroupEncryptionService.saveGroupKey(data['id'], groupKey);
+      return GroupChat.fromJson(data);
+    } else {
+      final decodedBody = utf8.decode(response.bodyBytes);
+      print('❌ Ошибка создания группы: ${response.statusCode} - $decodedBody');
+      throw Exception('Failed to create group chat');
+    }
+  }
+
+  Future<List<GroupChat>> getUserGroupChats() async {
+    final headers = await _getHeaders();
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/groups'),
+      headers: headers,
+    );
+
+    if (response.statusCode == 200) {
+      final decodedBody = utf8.decode(response.bodyBytes);
+      final List<dynamic> data = json.decode(decodedBody);
+      return data.map((json) => GroupChat.fromJson(json)).toList();
+    } else {
+      throw Exception('Failed to load group chats');
+    }
+  }
+
+  Future<GroupChat> getGroupChat(String groupId) async {
+    final headers = await _getHeaders();
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/groups/$groupId'),
+      headers: headers,
+    );
+
+    if (response.statusCode == 200) {
+      final decodedBody = utf8.decode(response.bodyBytes);
+      final data = json.decode(decodedBody);
+      return GroupChat.fromJson(data);
+    } else {
+      throw Exception('Failed to load group chat');
+    }
+  }
+
+  Future<void> addGroupParticipants(
+    String groupId,
+    List<String> userIds,
+  ) async {
+    final headers = await _getHeaders();
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/groups/$groupId/add'),
+      headers: headers,
+      body: utf8.encode(json.encode({'user_ids': userIds})),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to add participants');
+    }
+  }
+
+  Future<void> removeGroupParticipant(String groupId, String userId) async {
+    final headers = await _getHeaders();
+    final response = await http.delete(
+      Uri.parse('$baseUrl/api/groups/$groupId/remove/$userId'),
+      headers: headers,
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to remove participant');
+    }
+  }
+
+  Future<void> leaveGroupChat(String groupId) async {
+    final headers = await _getHeaders();
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/groups/$groupId/leave'),
+      headers: headers,
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to leave group');
+    }
+  }
+
+  Future<String> getGroupEncryptedKey(String groupId) async {
+    final headers = await _getHeaders();
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/groups/$groupId/key'),
+      headers: headers,
+    );
+
+    if (response.statusCode == 200) {
+      final decodedBody = utf8.decode(response.bodyBytes);
+      final data = json.decode(decodedBody);
+      return data['encrypted_key'];
+    } else {
+      throw Exception('Failed to get group key');
     }
   }
 }

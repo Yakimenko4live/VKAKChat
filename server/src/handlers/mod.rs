@@ -6,3 +6,4 @@ pub mod health;
 pub mod users;
 pub mod websocket;
 pub mod admin;
+pub mod groups;

@@ -23,9 +23,13 @@ class _ChatListWidgetState extends State<ChatListWidget> {
 
   Future<void> _loadChats() async {
     try {
-      final chats = await _apiService.getUserChats();
+      final allChats = await _apiService.getUserChats();
+      // Фильтруем только личные чаты (где chatType == 'private')
+      final privateChats = allChats
+          .where((chat) => chat.chatType == 'private')
+          .toList();
       setState(() {
-        _chats = chats;
+        _chats = privateChats;
         _isLoading = false;
       });
     } catch (e) {
@@ -51,21 +55,23 @@ class _ChatListWidgetState extends State<ChatListWidget> {
           const SizedBox(height: 16),
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: Colors.green))
+                ? const Center(
+                    child: CircularProgressIndicator(color: Colors.green),
+                  )
                 : _chats.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'Нет чатов. Начните диалог через поиск!',
-                          style: TextStyle(color: Colors.white54),
-                        ),
-                      )
-                    : ListView.builder(
-                        itemCount: _chats.length,
-                        itemBuilder: (context, index) {
-                          final chat = _chats[index];
-                          return _buildChatTile(chat);
-                        },
-                      ),
+                ? const Center(
+                    child: Text(
+                      'Нет чатов. Начните диалог через поиск!',
+                      style: TextStyle(color: Colors.white54),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: _chats.length,
+                    itemBuilder: (context, index) {
+                      final chat = _chats[index];
+                      return _buildChatTile(chat);
+                    },
+                  ),
           ),
         ],
       ),
@@ -121,10 +127,7 @@ class _ChatListWidgetState extends State<ChatListWidget> {
                   const SizedBox(height: 4),
                   Text(
                     'Нажмите для открытия чата',
-                    style: TextStyle(
-                      color: Colors.white54,
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                 ],
               ),

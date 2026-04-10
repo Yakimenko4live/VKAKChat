@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../widgets/chat_list_widget.dart';
-import '../widgets/favorites_widget.dart';
 import '../widgets/search_widget.dart';
 import '../widgets/profile_widget.dart';
+import '../widgets/group_chats_widget.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -16,14 +16,14 @@ class _MainScreenState extends State<MainScreen> {
 
   final List<Widget> _pages = [
     const ChatListWidget(),
-    const FavoritesWidget(),
+    const GroupChatsWidget(),
     const SearchWidget(),
     const ProfileWidget(),
   ];
 
   @override
   Widget build(BuildContext context) {
-    // Убираем Center и Column, которые могли сжимать Scaffold, 
+    // Убираем Center и Column, которые могли сжимать Scaffold,
     // используем прозрачный Scaffold как основной каркас.
     return Scaffold(
       backgroundColor: Colors.transparent, // Важно для видимости фона
@@ -35,7 +35,7 @@ class _MainScreenState extends State<MainScreen> {
                 margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 decoration: BoxDecoration(
                   // Полупрозрачный темный фон для эффекта стекла
-                  color: Colors.black.withOpacity(0.4), 
+                  color: Colors.black.withOpacity(0.4),
                   borderRadius: BorderRadius.circular(28),
                   border: Border.all(
                     color: Colors.green.withOpacity(0.2),
@@ -53,18 +53,19 @@ class _MainScreenState extends State<MainScreen> {
                   borderRadius: BorderRadius.circular(28),
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 400),
-                    transitionBuilder: (Widget child, Animation<double> animation) {
-                      return FadeTransition(
-                        opacity: animation,
-                        child: SlideTransition(
-                          position: Tween<Offset>(
-                            begin: const Offset(0.05, 0),
-                            end: Offset.zero,
-                          ).animate(animation),
-                          child: child,
-                        ),
-                      );
-                    },
+                    transitionBuilder:
+                        (Widget child, Animation<double> animation) {
+                          return FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0.05, 0),
+                                end: Offset.zero,
+                              ).animate(animation),
+                              child: child,
+                            ),
+                          );
+                        },
                     child: _pages[_selectedIndex],
                   ),
                 ),
@@ -93,22 +94,22 @@ class _MainScreenState extends State<MainScreen> {
                 selectedItemColor: Colors.green,
                 unselectedItemColor: Colors.white54,
                 elevation: 0,
-                items: const [
-                  BottomNavigationBarItem(
+                items: [
+                  const BottomNavigationBarItem(
                     icon: Icon(Icons.chat_bubble_outline),
                     activeIcon: Icon(Icons.chat_bubble),
                     label: 'Чаты',
                   ),
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.star_border),
-                    activeIcon: Icon(Icons.star),
-                    label: 'Избранное',
+                  const BottomNavigationBarItem(
+                    icon: Icon(Icons.group),
+                    activeIcon: Icon(Icons.group),
+                    label: 'Группы',
                   ),
-                  BottomNavigationBarItem(
+                  const BottomNavigationBarItem(
                     icon: Icon(Icons.search),
                     label: 'Поиск',
                   ),
-                  BottomNavigationBarItem(
+                  const BottomNavigationBarItem(
                     icon: Icon(Icons.person_outline),
                     activeIcon: Icon(Icons.person),
                     label: 'Профиль',
