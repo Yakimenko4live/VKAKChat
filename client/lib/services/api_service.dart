@@ -422,16 +422,57 @@ class ApiService {
   Future<void> addGroupParticipants(
     String groupId,
     List<String> userIds,
+    String groupKey, // добавить третий параметр
   ) async {
     final headers = await _getHeaders();
+
+    final prefs = await SharedPreferences.getInstance();
+    final myPrivateKey = prefs.getString('private_key');
+    if (myPrivateKey == null) {
+      throw Exception('Приватный ключ не найден');
+    }
+
+    // Шифруем групповой ключ для каждого нового участника
+    final Map<String, String> encryptedKeys = {};
+
+    for (final userId in userIds) {
+      final userPublicKey = await getPublicKey(userId);
+      if (userPublicKey != null) {
+        final sharedSecret = EncryptionService.deriveSharedSecret(
+          myPrivateKey,
+          userPublicKey,
+        );
+        final encryptedKey = EncryptionService.encryptMessage(
+          groupKey,
+          sharedSecret,
+        );
+        encryptedKeys[userId] = encryptedKey;
+      }
+    }
+
     final response = await http.post(
       Uri.parse('$baseUrl/api/groups/$groupId/add'),
       headers: headers,
-      body: utf8.encode(json.encode({'user_ids': userIds})),
+      body: utf8.encode(
+        json.encode({'user_ids': userIds, 'encrypted_keys': encryptedKeys}),
+      ),
     );
 
     if (response.statusCode != 200) {
       throw Exception('Failed to add participants');
+    }
+  }
+
+  Future<void> setUserRole(String userId, String role) async {
+    final headers = await _getHeaders();
+    final response = await http.put(
+      Uri.parse('$baseUrl/api/admin/set-role/$userId'),
+      headers: headers,
+      body: utf8.encode(json.encode({'role': role})),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to set user role');
     }
   }
 
@@ -472,6 +513,28 @@ class ApiService {
       return data['encrypted_key'];
     } else {
       throw Exception('Failed to get group key');
+    }
+  }
+
+  Future<List<AllUser>> getAllUsers() async {
+    print('🔵 getAllUsers called');
+    final headers = await _getHeaders();
+    print('🔵 Headers: $headers');
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/admin/users'),
+      headers: headers,
+    );
+
+    print('🔵 Response status: ${response.statusCode}');
+    print('🔵 Response body: ${utf8.decode(response.bodyBytes)}');
+
+    if (response.statusCode == 200) {
+      final decodedBody = utf8.decode(response.bodyBytes);
+      final List<dynamic> data = json.decode(decodedBody);
+      return data.map((json) => AllUser.fromJson(json)).toList();
+    } else {
+      throw Exception('Failed to load users');
     }
   }
 }

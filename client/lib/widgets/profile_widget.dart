@@ -14,6 +14,7 @@ class ProfileWidget extends StatefulWidget {
 class _ProfileWidgetState extends State<ProfileWidget> {
   final ApiService _apiService = ApiService();
   UserData? _userData;
+  List<AllUser> _allUsers = [];
   bool _isLoading = true;
   bool _isEditing = false;
 
@@ -54,6 +55,17 @@ class _ProfileWidgetState extends State<ProfileWidget> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Ошибка загрузки профиля: $e')));
+    }
+  }
+
+  Future<void> _loadAllUsers() async {
+    try {
+      final users = await _apiService.getAllUsers();
+      setState(() {
+        _allUsers = users;
+      });
+    } catch (e) {
+      print('Ошибка загрузки пользователей: $e');
     }
   }
 
@@ -184,6 +196,149 @@ class _ProfileWidgetState extends State<ProfileWidget> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Future<void> _showAssignAdminDialog() async {
+    await _loadAllUsers();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Назначить админов',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const Divider(color: Colors.grey),
+            Expanded(
+              child: ListView.builder(
+                itemCount: _allUsers.length,
+                itemBuilder: (context, index) {
+                  final user = _allUsers[index];
+                  final isAdmin =
+                      user.role == 'admin' || user.role == 'super_admin';
+                  return ListTile(
+                    title: Text(
+                      user.fullName,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    subtitle: Text(
+                      user.departmentName,
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                      ),
+                    ),
+                    trailing: isAdmin
+                        ? const Chip(
+                            label: Text('Админ'),
+                            backgroundColor: Colors.green,
+                          )
+                        : ElevatedButton(
+                            onPressed: () async {
+                              await _apiService.setUserRole(user.id, 'admin');
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Пользователь назначен админом',
+                                  ),
+                                ),
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                            ),
+                            child: const Text('Назначить админом'),
+                          ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showDeleteUserDialog() async {
+    await _loadAllUsers();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Удаление пользователей',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const Divider(color: Colors.grey),
+            Expanded(
+              child: ListView.builder(
+                itemCount: _allUsers.length,
+                itemBuilder: (context, index) {
+                  final user = _allUsers[index];
+                  return ListTile(
+                    title: Text(
+                      user.fullName,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    subtitle: Text(
+                      user.departmentName,
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                      ),
+                    ),
+                    trailing: ElevatedButton(
+                      onPressed: () async {
+                        await _apiService.rejectUser(user.id);
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Пользователь удалён')),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('Удалить'),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _logout() async {
@@ -329,6 +484,31 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                     ),
                     onTap: _logout,
                   ),
+                  if (_userData!.role == 'super_admin') ...[
+                    const SizedBox(height: 8),
+                    ListTile(
+                      leading: const Icon(
+                        Icons.admin_panel_settings,
+                        color: Colors.green,
+                      ),
+                      title: const Text(
+                        'Назначить админов',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      onTap: _showAssignAdminDialog,
+                    ),
+                    ListTile(
+                      leading: const Icon(
+                        Icons.delete_forever,
+                        color: Colors.red,
+                      ),
+                      title: const Text(
+                        'Удалить пользователя',
+                        style: TextStyle(color: Colors.red),
+                      ),
+                      onTap: _showDeleteUserDialog,
+                    ),
+                  ],
                 ] else ...[
                   Form(
                     key: _formKey,

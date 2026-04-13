@@ -12,6 +12,7 @@ import '../models/group_chat.dart';
 import '../widgets/file_message_widget.dart';
 import '../widgets/image_message_widget.dart';
 import 'dart:convert';
+import 'chat_screen.dart';
 
 enum MessageType { text, image, file }
 
@@ -48,13 +49,11 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     super.initState();
     print('🔵 GroupChatScreen initState for group: ${widget.groupId}');
 
-    // Сначала инициализируем WebSocket
     _webSocketService = Provider.of<WebSocketService>(context, listen: false);
     _webSocketService.onNewMessage = _onNewMessage;
 
-    // Потом загружаем данные
     _loadCurrentUser();
-    _loadPrivateKey(); // внутри вызовет _loadGroupKey, а тот вызовет _loadMessages
+    _loadPrivateKey();
     _loadGroupInfo();
   }
 
@@ -63,6 +62,103 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     _webSocketService.onNewMessage = null;
     _messageController.dispose();
     super.dispose();
+  }
+
+  void _showParticipantsModal() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Участники группы',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const Divider(color: Colors.grey, thickness: 1),
+            Expanded(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _participants.length,
+                itemBuilder: (context, index) {
+                  final participant = _participants[index];
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.green.withOpacity(0.3),
+                      child: const Icon(
+                        Icons.person,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(
+                      participant.fullName,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    subtitle: participant.isAdmin
+                        ? const Text(
+                            'Админ',
+                            style: TextStyle(color: Colors.green, fontSize: 12),
+                          )
+                        : null,
+                    trailing: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _startPrivateChat(
+                          participant.userId,
+                          participant.fullName,
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Text('Написать'),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _startPrivateChat(String userId, String fullName) async {
+    try {
+      final chat = await _apiService.createChat(userId);
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ChatScreen(
+              chatId: chat.id,
+              otherUserName: fullName,
+              otherUserId: userId,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Ошибка создания чата: $e')));
+    }
   }
 
   Future<void> _loadCurrentUser() async {
@@ -102,20 +198,24 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       final encryptedKey = await _apiService.getGroupEncryptedKey(
         widget.groupId,
       );
-      print('🔑 Encrypted key received: $encryptedKey');
 
-      print('🔑 Getting my public key for user: $_currentUserId');
-      final myPublicKey = await _apiService.getPublicKey(_currentUserId!);
-      if (myPublicKey == null) {
-        print('❌ My public key is null');
+      // Получаем информацию о группе, чтобы узнать ID создателя
+      print('🔑 Getting group info to find creator');
+      final groupInfo = await _apiService.getGroupChat(widget.groupId);
+      final creatorId = groupInfo.creatorId;
+      print('🔑 Creator ID: $creatorId');
+
+      print('🔑 Getting creator public key for user: $creatorId');
+      final creatorPublicKey = await _apiService.getPublicKey(creatorId);
+      if (creatorPublicKey == null) {
+        print('❌ Creator public key is null');
         return;
       }
-      print('✅ My public key: ${myPublicKey.substring(0, 30)}...');
 
-      print('🔑 Deriving shared secret');
+      print('🔑 Deriving shared secret (my private + creator public)');
       final sharedSecret = EncryptionService.deriveSharedSecret(
         _myPrivateKey!,
-        myPublicKey,
+        creatorPublicKey,
       );
       print('✅ Shared secret derived, length: ${sharedSecret.length}');
 
@@ -132,11 +232,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       });
       print('✅ Ключ группы получен и расшифрован, шифрование готово');
 
-      // Загружаем сообщения после получения ключа
       await _loadMessages();
     } catch (e) {
       print('❌ Ошибка получения ключа группы: $e');
-      // Если не удалось получить ключ, всё равно загружаем сообщения
       await _loadMessages();
     }
   }
@@ -255,11 +353,11 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final fileId = await FileService.uploadFile(
+      final fileId = await FileService.uploadFileWithGroupKey(
         chatId: widget.groupId,
         fileBytes: fileData['bytes'],
         filename: fileData['name'],
-        sharedSecret: [],
+        groupKey: _groupKey!,
       );
 
       final messageData = {
@@ -334,9 +432,113 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   }
 
   Future<void> _addParticipant() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Функция добавления участников в разработке'),
+    // Получаем всех пользователей
+    final allUsers = await _apiService.getAllUsers();
+
+    // Фильтруем только тех, кто ещё не в группе
+    final availableUsers = allUsers
+        .where((u) => !_participants.any((p) => p.userId == u.id))
+        .toList();
+
+    if (availableUsers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Нет доступных пользователей для добавления'),
+        ),
+      );
+      return;
+    }
+
+    final List<String> selectedUserIds = [];
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: const Text(
+            'Добавить участников',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: SizedBox(
+            width: 300,
+            height: 400,
+            child: Column(
+              children: [
+                const Text(
+                  'Выберите пользователей:',
+                  style: TextStyle(color: Colors.white),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: availableUsers.length,
+                    itemBuilder: (context, index) {
+                      final user = availableUsers[index];
+                      final isSelected = selectedUserIds.contains(user.id);
+                      return CheckboxListTile(
+                        title: Text(
+                          user.fullName,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        subtitle: Text(
+                          user.departmentName ?? '',
+                          style: const TextStyle(color: Colors.white54),
+                        ),
+                        value: isSelected,
+                        onChanged: (selected) {
+                          setDialogState(() {
+                            if (selected == true) {
+                              selectedUserIds.add(user.id);
+                            } else {
+                              selectedUserIds.remove(user.id);
+                            }
+                          });
+                        },
+                        checkColor: Colors.green,
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Отмена', style: TextStyle(color: Colors.grey)),
+            ),
+            TextButton(
+              onPressed: () async {
+                if (selectedUserIds.isNotEmpty && _groupKey != null) {
+                  await _apiService.addGroupParticipants(
+                    widget.groupId,
+                    selectedUserIds,
+                    _groupKey!,
+                  );
+                  Navigator.pop(context);
+                  // Перезагружаем группу
+                  final group = await _apiService.getGroupChat(widget.groupId);
+                  setState(() {
+                    _participants = group.participants;
+                    _isAdmin = group.adminIds.contains(_currentUserId);
+                  });
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Участники добавлены')),
+                  );
+                } else if (_groupKey == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Ключ группы не загружен')),
+                  );
+                }
+              },
+              child: const Text(
+                'Добавить',
+                style: TextStyle(color: Colors.green),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -467,9 +669,21 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text(
-          widget.groupTitle,
-          style: const TextStyle(color: Colors.white),
+        title: InkWell(
+          onTap: _participants.isNotEmpty ? _showParticipantsModal : null,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.groupTitle,
+                style: const TextStyle(color: Colors.white),
+              ),
+              Text(
+                '${_participants.length} участников',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+            ],
+          ),
         ),
         backgroundColor: Colors.green,
         elevation: 0,
@@ -551,7 +765,6 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   Widget _buildMessageBubble(MessageResponse message, bool isMe) {
     final senderName = _getSenderName(message.senderId);
 
-    // Для файлов и изображений
     if (message.content.startsWith('{')) {
       try {
         final data = json.decode(message.content);
@@ -643,7 +856,6 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       } catch (e) {}
     }
 
-    // Текстовое сообщение
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(

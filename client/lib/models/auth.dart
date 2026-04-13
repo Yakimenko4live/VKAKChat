@@ -67,3 +67,42 @@ class UserData {
     );
   }
 }
+
+class AllUser {
+  final String id;
+  final String surname;
+  final String name;
+  final String? patronymic;
+  final String departmentName;
+  final String role;
+  final bool isApproved;
+
+  AllUser({
+    required this.id,
+    required this.surname,
+    required this.name,
+    this.patronymic,
+    required this.departmentName,
+    required this.role,
+    required this.isApproved,
+  });
+
+  String get fullName {
+    if (patronymic != null && patronymic!.isNotEmpty) {
+      return '$surname $name $patronymic';
+    }
+    return '$surname $name';
+  }
+
+  factory AllUser.fromJson(Map<String, dynamic> json) {
+    return AllUser(
+      id: json['id'].toString(),
+      surname: json['surname'],
+      name: json['name'],
+      patronymic: json['patronymic'],
+      departmentName: json['department_name'],
+      role: json['role'],
+      isApproved: json['is_approved'],
+    );
+  }
+}

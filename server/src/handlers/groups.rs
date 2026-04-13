@@ -21,6 +21,7 @@ pub struct CreateGroupRequest {
 #[derive(Debug, Deserialize)]
 pub struct AddParticipantsRequest {
     pub user_ids: Vec<Uuid>,
+    pub encrypted_keys: HashMap<Uuid, String>, // Добавляем ключи для новых участников
 }
 
 #[derive(Debug, Serialize)]
@@ -49,6 +50,7 @@ pub async fn create_group(
 ) -> Result<Json<GroupChatResponse>, (StatusCode, String)> {
     println!("📝 Creating group: title={}, participants={:?}", req.title, req.participant_ids);
     println!("📝 Encrypted keys: {:?}", req.encrypted_keys);
+    
     // Проверяем права
     let user_role: Option<String> = sqlx::query_scalar(
         "SELECT role FROM users WHERE id = $1"
@@ -200,6 +202,7 @@ pub async fn get_group(
         created_at: group.created_at.unwrap(),
     }))
 }
+
 pub async fn get_group_key(
     State(state): State<AppState>,
     Extension(user_id): Extension<Uuid>,
@@ -222,7 +225,9 @@ pub async fn get_group_key(
         }
         None => Err((StatusCode::NOT_FOUND, "Key not found".to_string())),
     }
-}pub async fn add_participants(
+}
+
+pub async fn add_participants(
     State(state): State<AppState>,
     Extension(user_id): Extension<Uuid>,
     Path(group_id): Path<Uuid>,
@@ -242,7 +247,9 @@ pub async fn get_group_key(
         return Err((StatusCode::FORBIDDEN, "Только администраторы группы могут добавлять участников".to_string()));
     }
     
-    for participant_id in req.user_ids {
+    // Добавляем участников и их зашифрованные ключи
+    for (i, participant_id) in req.user_ids.iter().enumerate() {
+        // Добавляем участника
         sqlx::query(
             "INSERT INTO chat_participants (chat_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING"
         )
@@ -251,6 +258,19 @@ pub async fn get_group_key(
         .execute(&state.pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+        
+        // Сохраняем зашифрованный ключ для нового участника
+        if let Some(encrypted_key) = req.encrypted_keys.get(participant_id) {
+            sqlx::query(
+                "INSERT INTO group_keys (group_id, user_id, encrypted_key) VALUES ($1, $2, $3) ON CONFLICT (group_id, user_id) DO UPDATE SET encrypted_key = $3"
+            )
+            .bind(group_id)
+            .bind(participant_id)
+            .bind(encrypted_key)
+            .execute(&state.pool)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+        }
     }
     
     Ok(StatusCode::OK)
@@ -275,6 +295,7 @@ pub async fn remove_participant(
         return Err((StatusCode::FORBIDDEN, "Только администраторы группы могут удалять участников".to_string()));
     }
     
+    // Удаляем участника из чата (ключ остаётся в БД, но это не страшно)
     sqlx::query(
         "DELETE FROM chat_participants WHERE chat_id = $1 AND user_id = $2"
     )
