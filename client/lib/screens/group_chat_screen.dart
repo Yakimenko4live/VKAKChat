@@ -47,13 +47,15 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   void initState() {
     super.initState();
     print('🔵 GroupChatScreen initState for group: ${widget.groupId}');
-    _loadCurrentUser();
-    _loadPrivateKey(); // теперь внутри вызовется _loadGroupKey()
-    _loadGroupInfo();
-    _loadMessages();
 
+    // Сначала инициализируем WebSocket
     _webSocketService = Provider.of<WebSocketService>(context, listen: false);
     _webSocketService.onNewMessage = _onNewMessage;
+
+    // Потом загружаем данные
+    _loadCurrentUser();
+    _loadPrivateKey(); // внутри вызовет _loadGroupKey, а тот вызовет _loadMessages
+    _loadGroupInfo();
   }
 
   @override
@@ -78,7 +80,6 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       print('❌ Приватный ключ не найден');
     } else {
       print('✅ Приватный ключ загружен: ${_myPrivateKey!.substring(0, 20)}...');
-      // После загрузки ключа, загружаем ключ группы
       await _loadGroupKey();
     }
   }
@@ -130,9 +131,13 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         _isEncryptionReady = true;
       });
       print('✅ Ключ группы получен и расшифрован, шифрование готово');
+
+      // Загружаем сообщения после получения ключа
+      await _loadMessages();
     } catch (e) {
       print('❌ Ошибка получения ключа группы: $e');
-      print('❌ Stack trace: ${StackTrace.current}');
+      // Если не удалось получить ключ, всё равно загружаем сообщения
+      await _loadMessages();
     }
   }
 
@@ -143,14 +148,12 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       setState(() {
         _participants = group.participants;
         _isAdmin = group.adminIds.contains(_currentUserId);
-        _isLoading = false;
       });
       print(
         '✅ Group loaded: ${group.title}, participants: ${group.participants.length}, isAdmin: $_isAdmin',
       );
     } catch (e) {
       print('❌ Error loading group info: $e');
-      setState(() => _isLoading = false);
     }
   }
 
@@ -306,7 +309,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.image, color: Colors.orange),
+              leading: const Icon(Icons.image, color: Colors.green),
               title: const Text(
                 'Изображение',
                 style: TextStyle(color: Colors.white),
@@ -317,10 +320,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(
-                Icons.insert_drive_file,
-                color: Colors.orange,
-              ),
+              leading: const Icon(Icons.insert_drive_file, color: Colors.green),
               title: const Text('Файл', style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
@@ -471,7 +471,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           widget.groupTitle,
           style: const TextStyle(color: Colors.white),
         ),
-        backgroundColor: Colors.orange,
+        backgroundColor: Colors.green,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
@@ -490,7 +490,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           Expanded(
             child: _isLoading
                 ? const Center(
-                    child: CircularProgressIndicator(color: Colors.orange),
+                    child: CircularProgressIndicator(color: Colors.green),
                   )
                 : _messages.isEmpty
                 ? const Center(
@@ -520,7 +520,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
               children: [
                 IconButton(
                   onPressed: _showAttachmentMenu,
-                  icon: const Icon(Icons.attach_file, color: Colors.orange),
+                  icon: const Icon(Icons.attach_file, color: Colors.green),
                 ),
                 Expanded(
                   child: TextField(
@@ -538,7 +538,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 ),
                 IconButton(
                   onPressed: () => _sendTextMessage(_messageController.text),
-                  icon: const Icon(Icons.send, color: Colors.orange),
+                  icon: const Icon(Icons.send, color: Colors.green),
                 ),
               ],
             ),
@@ -549,6 +549,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   }
 
   Widget _buildMessageBubble(MessageResponse message, bool isMe) {
+    final senderName = _getSenderName(message.senderId);
+
+    // Для файлов и изображений
     if (message.content.startsWith('{')) {
       try {
         final data = json.decode(message.content);
@@ -562,9 +565,17 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
               if (!isMe)
                 Padding(
                   padding: const EdgeInsets.only(left: 8, bottom: 4),
-                  child: Text(
-                    _getSenderName(message.senderId),
-                    style: const TextStyle(color: Colors.white70, fontSize: 11),
+                  child: SizedBox(
+                    width: 200,
+                    child: Text(
+                      senderName,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
               FutureBuilder<Uint8List?>(
@@ -583,7 +594,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                       vertical: 10,
                     ),
                     decoration: BoxDecoration(
-                      color: isMe ? Colors.orange : Colors.grey[800],
+                      color: isMe ? Colors.green : Colors.grey[800],
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: const SizedBox(
@@ -601,17 +612,21 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (!isMe)
-                Text(
-                  _getSenderName(message.senderId),
-                  style: const TextStyle(color: Colors.white70, fontSize: 11),
+                Padding(
+                  padding: const EdgeInsets.only(left: 8, bottom: 4),
+                  child: SizedBox(
+                    width: 200,
+                    child: Text(
+                      senderName,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ),
-              Padding(
-                padding: const EdgeInsets.only(left: 8, bottom: 4),
-                child: Text(
-                  _getSenderName(message.senderId),
-                  style: const TextStyle(color: Colors.white70, fontSize: 11),
-                ),
-              ),
               FileMessageWidget(
                 filename: fileData['filename'],
                 size: fileData['size'],
@@ -628,25 +643,43 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       } catch (e) {}
     }
 
+    // Текстовое сообщение
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: isMe ? Colors.orange : Colors.grey[800],
-          borderRadius: BorderRadius.circular(20),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: isMe
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
           children: [
             if (!isMe)
-              Text(
-                _getSenderName(message.senderId),
-                style: const TextStyle(color: Colors.white70, fontSize: 11),
+              Padding(
+                padding: const EdgeInsets.only(left: 12, bottom: 2),
+                child: SizedBox(
+                  width: MediaQuery.of(context).size.width * 0.7,
+                  child: Text(
+                    senderName,
+                    style: const TextStyle(color: Colors.white70, fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ),
-            const SizedBox(height: 4),
-            Text(message.content, style: const TextStyle(color: Colors.white)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: isMe ? Colors.green : Colors.grey[800],
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                message.content,
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
           ],
         ),
       ),
