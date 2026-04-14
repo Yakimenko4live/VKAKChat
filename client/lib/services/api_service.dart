@@ -537,4 +537,18 @@ class ApiService {
       throw Exception('Failed to load users');
     }
   }
+
+  Future<void> markMessagesAsRead(String chatId) async {
+    final headers = await _getHeaders();
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/chats/$chatId/read'),
+      headers: headers,
+    );
+
+    if (response.statusCode != 200) {
+      final decodedBody = utf8.decode(response.bodyBytes);
+      final error = json.decode(decodedBody);
+      throw Exception(error['message'] ?? 'Failed to mark messages as read');
+    }
+  }
 }

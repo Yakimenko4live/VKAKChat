@@ -4,6 +4,7 @@ import '../services/api_service.dart';
 import '../models/chat.dart';
 import '../screens/chat_screen.dart';
 import '../services/websocket_service.dart';
+import '../services/unread_counter_service.dart';
 
 class ChatListWidget extends StatefulWidget {
   const ChatListWidget({super.key});
@@ -21,7 +22,7 @@ class _ChatListWidgetState extends State<ChatListWidget> {
   void initState() {
     super.initState();
     _loadChats();
-    
+
     final wsService = Provider.of<WebSocketService>(context, listen: false);
     wsService.onNewChat = (chatData) {
       _loadChats();
@@ -41,6 +42,18 @@ class _ChatListWidgetState extends State<ChatListWidget> {
       final privateChats = allChats
           .where((chat) => chat.chatType == 'private')
           .toList();
+
+      // Обновляем общий счётчик непрочитанных сообщений
+      final unreadService = Provider.of<UnreadCounterService>(
+        context,
+        listen: false,
+      );
+      int totalUnread = privateChats.fold(
+        0,
+        (sum, chat) => sum + chat.unreadCount,
+      );
+      unreadService.updateTotalUnreadCount(totalUnread);
+
       setState(() {
         _chats = privateChats;
         _isLoading = false;
@@ -101,6 +114,7 @@ class _ChatListWidgetState extends State<ChatListWidget> {
               chatId: chat.id,
               otherUserName: chat.otherUserName ?? 'Чат',
               otherUserId: chat.otherUserId ?? '',
+              initialUnreadCount: chat.unreadCount,
             ),
           ),
         );
@@ -145,6 +159,23 @@ class _ChatListWidgetState extends State<ChatListWidget> {
                 ],
               ),
             ),
+            if (chat.unreadCount > 0)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  chat.unreadCount > 99 ? '99+' : '${chat.unreadCount}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            const SizedBox(width: 8),
             const Icon(Icons.chevron_right, color: Colors.white54),
           ],
         ),

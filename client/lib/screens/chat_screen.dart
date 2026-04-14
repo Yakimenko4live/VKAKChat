@@ -7,6 +7,7 @@ import '../services/websocket_service.dart';
 import '../services/file_service.dart';
 import '../services/chat_keys_service.dart';
 import '../services/encryption_service.dart';
+import '../services/unread_counter_service.dart';
 import '../models/chat.dart';
 import '../widgets/file_message_widget.dart';
 import '../widgets/image_message_widget.dart';
@@ -18,12 +19,14 @@ class ChatScreen extends StatefulWidget {
   final String chatId;
   final String otherUserName;
   final String otherUserId;
+  final int initialUnreadCount;
 
   const ChatScreen({
     super.key,
     required this.chatId,
     required this.otherUserName,
     required this.otherUserId,
+    this.initialUnreadCount = 0,
   });
 
   @override
@@ -43,6 +46,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isEncryptionReady = false;
 
   final Map<String, Uint8List> _fileCache = {};
+  bool _hasResetUnread = false;
 
   @override
   void initState() {
@@ -53,6 +57,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _webSocketService = Provider.of<WebSocketService>(context, listen: false);
     _webSocketService.onNewMessage = _onNewMessage;
+
+    // ✅ Сбрасываем счётчик непрочитанных сообщений при открытии чата
+    _resetUnreadCounter();
   }
 
   @override
@@ -60,6 +67,29 @@ class _ChatScreenState extends State<ChatScreen> {
     _webSocketService.onNewMessage = null;
     _messageController.dispose();
     super.dispose();
+  }
+
+  Future<void> _resetUnreadCounter() async {
+    if (_hasResetUnread) return;
+    _hasResetUnread = true;
+
+    final unreadService = Provider.of<UnreadCounterService>(
+      context,
+      listen: false,
+    );
+
+    // Сбрасываем счётчик для этого чата, если есть непрочитанные
+    if (widget.initialUnreadCount > 0) {
+      unreadService.resetForChat(widget.chatId, widget.initialUnreadCount);
+
+      // Отправляем запрос на сервер для отметки сообщений как прочитанных
+      try {
+        await _apiService.markMessagesAsRead(widget.chatId);
+        print('✅ Сообщения в чате ${widget.chatId} отмечены как прочитанные');
+      } catch (e) {
+        print('❌ Ошибка отметки сообщений как прочитанных: $e');
+      }
+    }
   }
 
   Future<void> _loadCurrentUser() async {

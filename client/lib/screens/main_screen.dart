@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../widgets/chat_list_widget.dart';
 import '../widgets/search_widget.dart';
 import '../widgets/profile_widget.dart';
 import '../widgets/group_chats_widget.dart';
+import '../services/unread_counter_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -23,10 +25,8 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Убираем Center и Column, которые могли сжимать Scaffold,
-    // используем прозрачный Scaffold как основной каркас.
     return Scaffold(
-      backgroundColor: Colors.transparent, // Важно для видимости фона
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Column(
           children: [
@@ -34,7 +34,6 @@ class _MainScreenState extends State<MainScreen> {
               child: Container(
                 margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 decoration: BoxDecoration(
-                  // Полупрозрачный темный фон для эффекта стекла
                   color: Colors.black.withOpacity(0.4),
                   borderRadius: BorderRadius.circular(28),
                   border: Border.all(
@@ -71,7 +70,6 @@ class _MainScreenState extends State<MainScreen> {
                 ),
               ),
             ),
-            // Нижняя панель навигации
             Container(
               margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               decoration: BoxDecoration(
@@ -95,9 +93,43 @@ class _MainScreenState extends State<MainScreen> {
                 unselectedItemColor: Colors.white54,
                 elevation: 0,
                 items: [
-                  const BottomNavigationBarItem(
-                    icon: Icon(Icons.chat_bubble_outline),
-                    activeIcon: Icon(Icons.chat_bubble),
+                  BottomNavigationBarItem(
+                    icon: Consumer<UnreadCounterService>(
+                      builder: (context, unreadService, _) {
+                        return Stack(
+                          children: [
+                            const Icon(Icons.chat_bubble_outline),
+                            if (unreadService.totalUnreadCount > 0)
+                              Positioned(
+                                right: 0,
+                                top: 0,
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 16,
+                                    minHeight: 16,
+                                  ),
+                                  child: Text(
+                                    unreadService.totalUnreadCount > 99
+                                        ? '99+'
+                                        : '${unreadService.totalUnreadCount}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
                     label: 'Чаты',
                   ),
                   const BottomNavigationBarItem(

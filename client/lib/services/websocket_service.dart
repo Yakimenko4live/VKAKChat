@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
 import '../models/chat.dart';
+import '../services/notification_service.dart';
+import '../services/unread_counter_service.dart';
 
 enum ConnectionQuality { excellent, good, poor, disconnected }
 
@@ -15,6 +17,7 @@ class WebSocketService extends ChangeNotifier {
   DateTime? _lastPingSent;
   StreamSubscription? _subscription;
 
+  String? _currentUserId;
   String? _currentUrl;
   bool _isReconnecting = false;
   int _reconnectAttempts = 0;
@@ -32,6 +35,11 @@ class WebSocketService extends ChangeNotifier {
     _isReconnecting = false;
     _reconnectAttempts = 0;
     _doConnect();
+  }
+
+  // Метод для установки user_id
+  void setCurrentUserId(String userId) {
+    _currentUserId = userId;
   }
 
   void authenticate(String userId) {
@@ -93,6 +101,18 @@ class WebSocketService extends ChangeNotifier {
       if (data['type'] == 'new_message') {
         final msg = MessageResponse.fromJson(data['data']);
         onNewMessage?.call(msg);
+
+        // Увеличиваем общий счётчик непрочитанных сообщений
+        // TODO: Раскомментировать после настройки правильной архитектуры
+        // UnreadCounterService().incrementUnread(msg.chatId);
+
+        // Уведомление (временно закомментируем, пока нет NotificationApi)
+        // if (_currentUserId != null && msg.senderId != _currentUserId) {
+        //   NotificationService.showNotification(
+        //     'Новое сообщение',
+        //     '${msg.senderId}: ${msg.content.substring(0, msg.content.length > 50 ? 50 : msg.content.length)}',
+        //   );
+        // }
       } else if (data['type'] == 'new_chat') {
         onNewChat?.call(data['data']);
       } else if (data['type'] == 'new_group_chat') {

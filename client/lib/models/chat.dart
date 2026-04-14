@@ -4,6 +4,7 @@ class ChatResponse {
   final String chatType;
   final String? otherUserId;
   final String? otherUserName;
+  final int unreadCount;
 
   ChatResponse({
     required this.id,
@@ -11,6 +12,7 @@ class ChatResponse {
     required this.chatType,
     this.otherUserId,
     this.otherUserName,
+    this.unreadCount = 0,
   });
 
   factory ChatResponse.fromJson(Map<String, dynamic> json) {
@@ -20,6 +22,7 @@ class ChatResponse {
       chatType: json['chat_type'],
       otherUserId: json['other_user_id']?.toString(),
       otherUserName: json['other_user_name'],
+      unreadCount: json['unread_count'] ?? 0,
     );
   }
 }

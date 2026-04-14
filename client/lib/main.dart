@@ -3,10 +3,11 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'animated_background.dart';
 import 'services/websocket_service.dart';
+import 'services/unread_counter_service.dart';
 import 'widgets/connection_indicator.dart';
 import 'screens/auth_screen.dart';
 import 'screens/main_screen.dart';
-import '../services/api_service.dart';
+import 'services/api_service.dart';
 
 void main() {
   runApp(const MyApp());
@@ -17,8 +18,17 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => WebSocketService()..connect('ws://localhost:3000/ws'),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+          create: (_) {
+            final wsService = WebSocketService();
+            wsService.connect('ws://localhost:3000/ws');
+            return wsService;
+          },
+        ),
+        ChangeNotifierProvider(create: (_) => UnreadCounterService()),
+      ],
       child: MaterialApp(
         title: 'VKAK Chat',
         debugShowCheckedModeBanner: false,
@@ -39,9 +49,8 @@ class MyApp extends StatelessWidget {
                 top: 16,
                 right: 16,
                 child: Consumer<WebSocketService>(
-                  builder: (context, service, _) => ConnectionIndicator(
-                    webSocketService: service,
-                  ),
+                  builder: (context, service, _) =>
+                      ConnectionIndicator(webSocketService: service),
                 ),
               ),
             ],
@@ -73,7 +82,7 @@ class _SplashScreenState extends State<SplashScreen> {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
     final userId = prefs.getString('userId');
-    
+
     if (token == null || userId == null) {
       _goToAuth();
       return;
@@ -82,7 +91,6 @@ class _SplashScreenState extends State<SplashScreen> {
     try {
       final userData = await _apiService.getMe(token);
       if (userData.isApproved) {
-        // Аутентифицируем WebSocket соединение
         final wsService = Provider.of<WebSocketService>(context, listen: false);
         wsService.authenticate(userId);
         _goToMain();
@@ -120,5 +128,3 @@ class _SplashScreenState extends State<SplashScreen> {
     );
   }
 }
-
-// Импорт для ApiService

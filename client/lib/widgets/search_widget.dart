@@ -155,6 +155,7 @@ class _SearchWidgetState extends State<SearchWidget> {
               chatId: chat.id,
               otherUserName: chat.otherUserName ?? 'Чат',
               otherUserId: userId,
+              initialUnreadCount: 0, // ✅ Для нового чата непрочитанных нет
             ),
           ),
         );

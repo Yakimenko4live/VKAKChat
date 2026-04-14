@@ -16,6 +16,7 @@ pub struct ChatResponse {
     pub chat_type: String,
     pub other_user_id: Option<Uuid>,
     pub other_user_name: Option<String>,
+    pub unread_count: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -37,6 +38,25 @@ pub struct MessageResponse {
 pub struct SendMessageRequest {
     pub chat_id: Uuid,
     pub content: String,
+}
+
+
+pub async fn mark_messages_as_read(
+    State(state): State<AppState>,
+    Extension(user_id): Extension<Uuid>,
+    Path(chat_id): Path<Uuid>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    
+    sqlx::query(
+        "UPDATE messages SET is_read = true WHERE chat_id = $1 AND sender_id != $2"
+    )
+    .bind(chat_id)
+    .bind(user_id)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+    
+    Ok(StatusCode::OK)
 }
 
 pub async fn get_or_create_chat(
@@ -87,6 +107,7 @@ pub async fn get_or_create_chat(
             chat_type,
             other_user_id: Some(body.other_user_id),
             other_user_name: Some(other_name),
+            unread_count: 0,
         }));
     }
     
@@ -140,6 +161,7 @@ pub async fn get_or_create_chat(
         chat_type: "private".to_string(),
         other_user_id: Some(body.other_user_id),
         other_user_name: Some(other_name),
+        unread_count: 0,
     }))
 }
 
@@ -164,7 +186,11 @@ pub async fn get_user_chats(
                (SELECT u2.id FROM users u2
                 JOIN chat_participants cp2 ON u2.id = cp2.user_id
                 WHERE cp2.chat_id = c.id AND cp2.user_id != $1
-                LIMIT 1) as other_user_id
+                LIMIT 1) as other_user_id,
+               (SELECT COUNT(*) FROM messages m 
+                WHERE m.chat_id = c.id 
+                AND m.sender_id != $1 
+                AND m.is_read = false) as unread_count
         FROM chats c
         JOIN chat_participants cp ON c.id = cp.chat_id
         WHERE cp.user_id = $1
@@ -183,13 +209,12 @@ pub async fn get_user_chats(
             chat_type: row.get("type"),
             other_user_id: row.get("other_user_id"),
             other_user_name: row.get("other_name"),
+            unread_count: row.get("unread_count"),
         }
     }).collect();
     
     Ok(Json(result))
 }
-
-
 pub async fn get_user_public_key(
     State(state): State<AppState>,
     Path(user_id): Path<Uuid>,
