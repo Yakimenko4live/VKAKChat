@@ -21,6 +21,8 @@ class WebSocketService extends ChangeNotifier {
   static const int _maxReconnectAttempts = 10;
 
   Function(MessageResponse)? onNewMessage;
+  Function(Map<String, dynamic>)? onNewChat;
+  Function(Map<String, dynamic>)? onNewGroupChat;
 
   ConnectionQuality get quality => _quality;
   Duration get latency => _currentLatency;
@@ -91,6 +93,10 @@ class WebSocketService extends ChangeNotifier {
       if (data['type'] == 'new_message') {
         final msg = MessageResponse.fromJson(data['data']);
         onNewMessage?.call(msg);
+      } else if (data['type'] == 'new_chat') {
+        onNewChat?.call(data['data']);
+      } else if (data['type'] == 'new_group_chat') {
+        onNewGroupChat?.call(data['data']);
       }
     } catch (e) {
       // ignore

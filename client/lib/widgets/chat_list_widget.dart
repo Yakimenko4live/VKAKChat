@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../models/chat.dart';
 import '../screens/chat_screen.dart';
+import '../services/websocket_service.dart';
 
 class ChatListWidget extends StatefulWidget {
   const ChatListWidget({super.key});
@@ -19,12 +21,23 @@ class _ChatListWidgetState extends State<ChatListWidget> {
   void initState() {
     super.initState();
     _loadChats();
+    
+    final wsService = Provider.of<WebSocketService>(context, listen: false);
+    wsService.onNewChat = (chatData) {
+      _loadChats();
+    };
+  }
+
+  @override
+  void dispose() {
+    final wsService = Provider.of<WebSocketService>(context, listen: false);
+    wsService.onNewChat = null;
+    super.dispose();
   }
 
   Future<void> _loadChats() async {
     try {
       final allChats = await _apiService.getUserChats();
-      // Фильтруем только личные чаты (где chatType == 'private')
       final privateChats = allChats
           .where((chat) => chat.chatType == 'private')
           .toList();

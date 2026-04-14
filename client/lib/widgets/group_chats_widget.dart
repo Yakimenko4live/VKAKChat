@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../models/group_chat.dart';
 import '../screens/group_chat_screen.dart';
+import '../services/websocket_service.dart';
 
 class GroupChatsWidget extends StatefulWidget {
   const GroupChatsWidget({super.key});
@@ -19,6 +21,18 @@ class _GroupChatsWidgetState extends State<GroupChatsWidget> {
   void initState() {
     super.initState();
     _loadGroupChats();
+    
+    final wsService = Provider.of<WebSocketService>(context, listen: false);
+    wsService.onNewGroupChat = (chatData) {
+      _loadGroupChats();
+    };
+  }
+
+  @override
+  void dispose() {
+    final wsService = Provider.of<WebSocketService>(context, listen: false);
+    wsService.onNewGroupChat = null;
+    super.dispose();
   }
 
   Future<void> _loadGroupChats() async {
@@ -87,7 +101,6 @@ class _GroupChatsWidgetState extends State<GroupChatsWidget> {
     final titleController = TextEditingController();
     final List<String> selectedUserIds = [];
 
-    // Получаем список пользователей для добавления
     final users = await _apiService.searchUsers('');
 
     await showDialog(
