@@ -35,3 +35,9 @@ Thumbs.db
 # Added by cargo
 
 /target
+.env
+*.pem
+fcm-auth.json
+private.pem
+*.key
+*secret*
