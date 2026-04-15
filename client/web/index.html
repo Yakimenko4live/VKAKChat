@@ -34,5 +34,23 @@
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
+ <script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('/service_worker.js')
+      .then(function(reg) {
+        console.log('Service Worker registered:', reg);
+        
+        // Запрашиваем разрешение на уведомления
+        if (Notification.permission === 'default') {
+          Notification.requestPermission();
+        }
+      })
+      .catch(function(err) {
+        console.log('Service Worker registration failed:', err);
+      });
+  });
+}
+</script>
 </body>
 </html>

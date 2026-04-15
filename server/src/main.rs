@@ -92,6 +92,7 @@ let protected_routes = Router::new()
     .route("/api/groups/:group_id/leave", post(handlers::groups::leave_group))
     .route("/api/groups/:group_id/key", get(handlers::groups::get_group_key))
     .route("/api/chats/:chat_id/read", post(handlers::chats::mark_messages_as_read))
+    .route("/api/webpush/subscribe", post(handlers::webpush::subscribe))
     .layer(axum::middleware::from_fn(auth_middleware));
     
 let app = Router::new()

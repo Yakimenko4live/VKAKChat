@@ -1,15 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'animated_background.dart';
 import 'services/websocket_service.dart';
 import 'services/unread_counter_service.dart';
+import 'services/notification_service.dart';
+import 'services/web_push_service.dart';
 import 'widgets/connection_indicator.dart';
 import 'screens/auth_screen.dart';
 import 'screens/main_screen.dart';
 import 'services/api_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Инициализируем уведомления в зависимости от платформы
+  if (!kIsWeb) {
+    await NotificationService.initialize();
+  }
+
   runApp(const MyApp());
 }
 
@@ -93,6 +103,13 @@ class _SplashScreenState extends State<SplashScreen> {
       if (userData.isApproved) {
         final wsService = Provider.of<WebSocketService>(context, listen: false);
         wsService.authenticate(userId);
+
+        if (kIsWeb) {
+          await WebPushService.init();
+        } else {
+          await NotificationService.sendTokenToServer();
+        }
+
         _goToMain();
       } else {
         await prefs.clear();

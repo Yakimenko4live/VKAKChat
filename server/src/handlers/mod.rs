@@ -7,3 +7,4 @@ pub mod users;
 pub mod websocket;
 pub mod admin;
 pub mod groups;
+pub mod webpush;
