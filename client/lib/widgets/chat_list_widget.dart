@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
@@ -18,21 +19,31 @@ class _ChatListWidgetState extends State<ChatListWidget> {
   List<ChatResponse> _chats = [];
   bool _isLoading = true;
 
+  StreamSubscription? _newChatSub;
+  StreamSubscription? _newMessageSub;
+
   @override
   void initState() {
     super.initState();
     _loadChats();
 
     final wsService = Provider.of<WebSocketService>(context, listen: false);
-    wsService.onNewChat = (chatData) {
-      _loadChats();
-    };
+    
+    // Слушаем новые чаты
+    _newChatSub = wsService.newChatStream.listen((_) {
+      if (mounted) _loadChats();
+    });
+
+    // Слушаем новые сообщения для обновления счётчиков и порядка чатов
+    _newMessageSub = wsService.messageStream.listen((_) {
+      if (mounted) _loadChats();
+    });
   }
 
   @override
   void dispose() {
-    final wsService = Provider.of<WebSocketService>(context, listen: false);
-    wsService.onNewChat = null;
+    _newChatSub?.cancel();
+    _newMessageSub?.cancel();
     super.dispose();
   }
 
@@ -43,7 +54,6 @@ class _ChatListWidgetState extends State<ChatListWidget> {
           .where((chat) => chat.chatType == 'private')
           .toList();
 
-      // Обновляем общий счётчик непрочитанных сообщений
       final unreadService = Provider.of<UnreadCounterService>(
         context,
         listen: false,

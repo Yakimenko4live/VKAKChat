@@ -6,6 +6,7 @@ class GroupChat {
   final List<String> adminIds;
   final String? groupPublicKey;
   final DateTime createdAt;
+  final int unreadCount;
 
   GroupChat({
     required this.id,
@@ -15,6 +16,7 @@ class GroupChat {
     required this.adminIds,
     this.groupPublicKey,
     required this.createdAt,
+    this.unreadCount = 0,
   });
 
   factory GroupChat.fromJson(Map<String, dynamic> json) {
@@ -28,6 +30,7 @@ class GroupChat {
       adminIds: (json['admin_ids'] as List).map((id) => id.toString()).toList(),
       groupPublicKey: json['group_public_key'],
       createdAt: DateTime.parse(json['created_at']),
+      unreadCount: json['unread_count'] ?? 0,
     );
   }
 }

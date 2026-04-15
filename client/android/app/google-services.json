@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "329688205388",
+    "project_id": "vkak-chat",
+    "storage_bucket": "vkak-chat.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:329688205388:android:fa6f2f69a2939e61b80ce9",
+        "android_client_info": {
+          "package_name": "com.vkak.chat"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyADadOG8ZT5wz-n_WIXr-hQ0Y1gHSCRPww"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

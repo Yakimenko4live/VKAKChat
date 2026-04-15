@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../models/group_chat.dart';
 import '../screens/group_chat_screen.dart';
 import '../services/websocket_service.dart';
+import '../services/unread_counter_service.dart';
 
 class GroupChatsWidget extends StatefulWidget {
   const GroupChatsWidget({super.key});
@@ -17,27 +19,54 @@ class _GroupChatsWidgetState extends State<GroupChatsWidget> {
   List<GroupChat> _groupChats = [];
   bool _isLoading = true;
 
+  StreamSubscription? _newGroupChatSub;
+  StreamSubscription? _newMessageSub; // ✅ Добавляем подписку на сообщения
+
   @override
   void initState() {
     super.initState();
     _loadGroupChats();
     
     final wsService = Provider.of<WebSocketService>(context, listen: false);
-    wsService.onNewGroupChat = (chatData) {
-      _loadGroupChats();
-    };
+    
+    _newGroupChatSub = wsService.newGroupChatStream.listen((_) {
+      if (mounted) _loadGroupChats();
+    });
+
+    // ✅ Слушаем новые сообщения для обновления счётчиков
+    _newMessageSub = wsService.messageStream.listen((_) {
+      if (mounted) _loadGroupChats();
+    });
   }
 
   @override
   void dispose() {
-    final wsService = Provider.of<WebSocketService>(context, listen: false);
-    wsService.onNewGroupChat = null;
+    _newGroupChatSub?.cancel();
+    _newMessageSub?.cancel();
     super.dispose();
   }
 
   Future<void> _loadGroupChats() async {
     try {
       final chats = await _apiService.getUserGroupChats();
+      
+      // ✅ Обновляем общий счётчик непрочитанных (групповые + личные)
+      final unreadService = Provider.of<UnreadCounterService>(
+        context,
+        listen: false,
+      );
+      
+      // Получаем личные чаты для общего подсчёта
+      final privateChats = await _apiService.getUserChats();
+      final privateUnread = privateChats
+          .where((chat) => chat.chatType == 'private')
+          .fold(0, (sum, chat) => sum + chat.unreadCount);
+      
+      final groupUnread = chats.fold(0, (sum, chat) => sum + chat.unreadCount);
+      final totalUnread = privateUnread + groupUnread;
+      
+      unreadService.updateTotalUnreadCount(totalUnread);
+      
       setState(() {
         _groupChats = chats;
         _isLoading = false;
@@ -195,8 +224,11 @@ class _GroupChatsWidgetState extends State<GroupChatsWidget> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                GroupChatScreen(groupId: chat.id, groupTitle: chat.title),
+            builder: (context) => GroupChatScreen(
+              groupId: chat.id,
+              groupTitle: chat.title,
+              initialUnreadCount: chat.unreadCount, // ✅ Передаём счётчик
+            ),
           ),
         );
       },
@@ -240,6 +272,24 @@ class _GroupChatsWidgetState extends State<GroupChatsWidget> {
                 ],
               ),
             ),
+            // ✅ Добавляем бейдж с непрочитанными
+            if (chat.unreadCount > 0)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  chat.unreadCount > 99 ? '99+' : '${chat.unreadCount}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            const SizedBox(width: 8),
             const Icon(Icons.chevron_right, color: Colors.white54),
           ],
         ),

@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
 import '../models/chat.dart';
-import '../services/notification_service.dart';
 import '../services/unread_counter_service.dart';
 
 enum ConnectionQuality { excellent, good, poor, disconnected }
@@ -23,9 +22,13 @@ class WebSocketService extends ChangeNotifier {
   int _reconnectAttempts = 0;
   static const int _maxReconnectAttempts = 10;
 
-  Function(MessageResponse)? onNewMessage;
-  Function(Map<String, dynamic>)? onNewChat;
-  Function(Map<String, dynamic>)? onNewGroupChat;
+  final _messageController = StreamController<MessageResponse>.broadcast();
+  final _newChatController = StreamController<Map<String, dynamic>>.broadcast();
+  final _newGroupChatController = StreamController<Map<String, dynamic>>.broadcast();
+
+  Stream<MessageResponse> get messageStream => _messageController.stream;
+  Stream<Map<String, dynamic>> get newChatStream => _newChatController.stream;
+  Stream<Map<String, dynamic>> get newGroupChatStream => _newGroupChatController.stream;
 
   ConnectionQuality get quality => _quality;
   Duration get latency => _currentLatency;
@@ -37,7 +40,6 @@ class WebSocketService extends ChangeNotifier {
     _doConnect();
   }
 
-  // Метод для установки user_id
   void setCurrentUserId(String userId) {
     _currentUserId = userId;
   }
@@ -100,26 +102,22 @@ class WebSocketService extends ChangeNotifier {
       final data = json.decode(message);
       if (data['type'] == 'new_message') {
         final msg = MessageResponse.fromJson(data['data']);
-        onNewMessage?.call(msg);
+        
+        // Отправляем событие в поток
+        _messageController.add(msg);
 
-        // Увеличиваем общий счётчик непрочитанных сообщений
-        // TODO: Раскомментировать после настройки правильной архитектуры
-        // UnreadCounterService().incrementUnread(msg.chatId);
-
-        // Уведомление (временно закомментируем, пока нет NotificationApi)
-        // if (_currentUserId != null && msg.senderId != _currentUserId) {
-        //   NotificationService.showNotification(
-        //     'Новое сообщение',
-        //     '${msg.senderId}: ${msg.content.substring(0, msg.content.length > 50 ? 50 : msg.content.length)}',
-        //   );
-        // }
+        // ✅ Увеличиваем счётчик для личных И групповых чатов
+        if (_currentUserId != null && msg.senderId != _currentUserId) {
+          UnreadCounterService().incrementUnread(msg.chatId);
+          print('📊 Incremented unread for chat: ${msg.chatId}');
+        }
       } else if (data['type'] == 'new_chat') {
-        onNewChat?.call(data['data']);
+        _newChatController.add(data['data']);
       } else if (data['type'] == 'new_group_chat') {
-        onNewGroupChat?.call(data['data']);
+        _newGroupChatController.add(data['data']);
       }
     } catch (e) {
-      // ignore
+      print('Error parsing message: $e');
     }
   }
 
@@ -207,6 +205,9 @@ class WebSocketService extends ChangeNotifier {
   @override
   void dispose() {
     disconnect();
+    _messageController.close();
+    _newChatController.close();
+    _newGroupChatController.close();
     super.dispose();
   }
 }

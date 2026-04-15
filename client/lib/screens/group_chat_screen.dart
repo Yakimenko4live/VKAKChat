@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +8,7 @@ import '../services/websocket_service.dart';
 import '../services/file_service.dart';
 import '../services/encryption_service.dart';
 import '../services/group_encryption_service.dart';
+import '../services/unread_counter_service.dart'; // ✅ Добавляем импорт
 import '../models/chat.dart';
 import '../models/group_chat.dart';
 import '../widgets/file_message_widget.dart';
@@ -19,11 +21,13 @@ enum MessageType { text, image, file }
 class GroupChatScreen extends StatefulWidget {
   final String groupId;
   final String groupTitle;
+  final int initialUnreadCount; // ✅ Добавляем параметр
 
   const GroupChatScreen({
     super.key,
     required this.groupId,
     required this.groupTitle,
+    this.initialUnreadCount = 0, // ✅ По умолчанию 0
   });
 
   @override
@@ -44,24 +48,54 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   late WebSocketService _webSocketService;
   final Map<String, Uint8List> _fileCache = {};
 
+  StreamSubscription? _messageSubscription;
+  bool _hasResetUnread = false; // ✅ Флаг для сброса счётчика
+
   @override
   void initState() {
     super.initState();
     print('🔵 GroupChatScreen initState for group: ${widget.groupId}');
 
     _webSocketService = Provider.of<WebSocketService>(context, listen: false);
-    _webSocketService.onNewMessage = _onNewMessage;
+    
+    _messageSubscription = _webSocketService.messageStream.listen(_onNewMessage);
 
     _loadCurrentUser();
     _loadPrivateKey();
     _loadGroupInfo();
+    
+    // ✅ Сбрасываем счётчик при открытии
+    _resetUnreadCounter();
   }
 
   @override
   void dispose() {
-    _webSocketService.onNewMessage = null;
+    _messageSubscription?.cancel();
     _messageController.dispose();
     super.dispose();
+  }
+
+  // ✅ Метод для сброса счётчика
+  Future<void> _resetUnreadCounter() async {
+    if (_hasResetUnread) return;
+    _hasResetUnread = true;
+
+    final unreadService = Provider.of<UnreadCounterService>(
+      context,
+      listen: false,
+    );
+
+    if (widget.initialUnreadCount > 0) {
+      unreadService.resetForChat(widget.groupId, widget.initialUnreadCount);
+
+      // Отмечаем сообщения как прочитанные на сервере
+      try {
+        await _apiService.markMessagesAsRead(widget.groupId);
+        print('✅ Сообщения в группе ${widget.groupId} отмечены как прочитанные');
+      } catch (e) {
+        print('❌ Ошибка отметки сообщений как прочитанных: $e');
+      }
+    }
   }
 
   void _showParticipantsModal() {

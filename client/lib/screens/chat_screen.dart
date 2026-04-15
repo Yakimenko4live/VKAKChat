@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -48,6 +49,8 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, Uint8List> _fileCache = {};
   bool _hasResetUnread = false;
 
+  StreamSubscription? _messageSubscription;
+
   @override
   void initState() {
     super.initState();
@@ -56,15 +59,16 @@ class _ChatScreenState extends State<ChatScreen> {
     _loadMessages();
 
     _webSocketService = Provider.of<WebSocketService>(context, listen: false);
-    _webSocketService.onNewMessage = _onNewMessage;
+    // ✅ Подписываемся через Stream
+    _messageSubscription = _webSocketService.messageStream.listen(_onNewMessage);
 
-    // ✅ Сбрасываем счётчик непрочитанных сообщений при открытии чата
     _resetUnreadCounter();
   }
 
   @override
   void dispose() {
-    _webSocketService.onNewMessage = null;
+    // ✅ Отписываемся
+    _messageSubscription?.cancel();
     _messageController.dispose();
     super.dispose();
   }
@@ -78,11 +82,9 @@ class _ChatScreenState extends State<ChatScreen> {
       listen: false,
     );
 
-    // Сбрасываем счётчик для этого чата, если есть непрочитанные
     if (widget.initialUnreadCount > 0) {
       unreadService.resetForChat(widget.chatId, widget.initialUnreadCount);
 
-      // Отправляем запрос на сервер для отметки сообщений как прочитанных
       try {
         await _apiService.markMessagesAsRead(widget.chatId);
         print('✅ Сообщения в чате ${widget.chatId} отмечены как прочитанные');
