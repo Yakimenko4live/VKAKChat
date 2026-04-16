@@ -38,11 +38,11 @@ dependencies:
   cryptography: ^2.7.0
   elliptic: ^0.3.8
   encrypt: ^5.0.3
-  image_picker: ^1.0.4
-  file_picker: ^6.1.1
+  image_picker: ^1.1.0
+  file_picker: ^8.0.0
   mime: ^1.0.4
   path_provider: ^2.1.1
-  open_file: ^3.3.2
+  open_file: ^3.4.0
   # uses-material-design: true
   firebase_core: ^3.13.0
   firebase_messaging: ^15.2.0
