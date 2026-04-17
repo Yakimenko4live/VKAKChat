@@ -10,7 +10,7 @@ import '../services/group_encryption_service.dart';
 import '../services/encryption_service.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://localhost:3000';
+  static const String baseUrl = 'http://45.153.188.197:3000';
 
   Future<Map<String, String>> _getHeaders() async {
     final prefs = await SharedPreferences.getInstance();

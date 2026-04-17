@@ -15,7 +15,6 @@ import 'services/api_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Инициализируем уведомления в зависимости от платформы
   if (!kIsWeb) {
     await NotificationService.initialize();
   }
@@ -33,7 +32,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) {
             final wsService = WebSocketService();
-            wsService.connect('ws://localhost:3000/ws');
+            wsService.connect('ws://45.153.188.197:3000/ws');
             return wsService;
           },
         ),
@@ -48,22 +47,27 @@ class MyApp extends StatelessWidget {
           scaffoldBackgroundColor: Colors.transparent,
         ),
         builder: (context, child) {
-          return Stack(
-            children: [
-              const AnimatedBackground(
-                numberOfPoints: 35,
-                connectionDistance: 180,
-              ),
-              if (child != null) child,
-              Positioned(
-                top: 16,
-                right: 16,
-                child: Consumer<WebSocketService>(
-                  builder: (context, service, _) =>
-                      ConnectionIndicator(webSocketService: service),
+          return Scaffold(
+            resizeToAvoidBottomInset:
+                true, // Автоматически сдвигает при появлении клавиатуры
+            backgroundColor: Colors.transparent,
+            body: Stack(
+              children: [
+                const AnimatedBackground(
+                  numberOfPoints: 35,
+                  connectionDistance: 180,
                 ),
-              ),
-            ],
+                if (child != null) child,
+                Positioned(
+                  top: 40, // Сдвигаем ниже, чтобы не перекрывало статус-бар
+                  right: 16,
+                  child: Consumer<WebSocketService>(
+                    builder: (context, service, _) =>
+                        ConnectionIndicator(webSocketService: service),
+                  ),
+                ),
+              ],
+            ),
           );
         },
         home: const SplashScreen(),
